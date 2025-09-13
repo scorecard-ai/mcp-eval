@@ -109,7 +109,16 @@ async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, b
       redirectToAuthorization() {},
       saveCodeVerifier() {},
       codeVerifier() { return 'test_verifier' },
-      state() { return 'test_state' }
+      state() { return 'test_state' },
+      // Add resource URL validation to handle protocol mismatches
+      async validateResourceURL(serverUrl: string | URL, resource?: string) {
+        // Always return the HTTPS version of the server URL to match expected URL
+        const url = new URL(serverUrl)
+        if (url.protocol === 'http:') {
+          url.protocol = 'https:'
+        }
+        return url
+      }
     }
 
     // Create HTTP transport with OAuth provider
