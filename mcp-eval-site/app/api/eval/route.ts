@@ -84,7 +84,7 @@ async function exchangeAuthCodeForToken(tokenEndpoint: string, authCode: string,
   }
 }
 
-async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, baseUrl: string): Promise<TestResult[]> {
+async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, baseUrl: string, state?: string): Promise<TestResult[]> {
   const tests: TestResult[] = []
   
   // Test 1: OAuth-based MCP Connection
@@ -92,7 +92,25 @@ async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, b
   let mcpClient: Client | null = null
   
   try {
-    // Create a simple OAuth provider for the authentication
+    // Extract client information from state parameter
+    let clientId = 'mcp-eval'
+    let codeVerifier = 'test_verifier'
+    
+    if (state) {
+      try {
+        const stateData = JSON.parse(atob(state))
+        if (stateData.clientId) {
+          clientId = stateData.clientId
+        }
+        if (stateData.codeVerifier) {
+          codeVerifier = stateData.codeVerifier
+        }
+      } catch (error) {
+        console.log('Could not parse state for OAuth provider:', error)
+      }
+    }
+    
+    // Create OAuth provider with actual client information
     const oauthProvider = {
       redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
       clientMetadata: {
@@ -103,12 +121,18 @@ async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, b
         token_endpoint_auth_method: 'none',
         scope: 'openid'
       },
-      clientInformation() { return undefined },
+      clientInformation() { 
+        // Return the actual client information that was used for authorization
+        return {
+          client_id: clientId,
+          client_secret: undefined // We use PKCE, no client secret
+        }
+      },
       tokens() { return undefined },
       saveTokens() {},
       redirectToAuthorization() {},
       saveCodeVerifier() {},
-      codeVerifier() { return 'test_verifier' },
+      codeVerifier() { return codeVerifier },
       state() { return 'test_state' },
       // Add resource URL validation to handle protocol mismatches
       async validateResourceURL(serverUrl: string | URL, resource?: string) {
@@ -460,7 +484,7 @@ export async function POST(request: NextRequest) {
     console.log('Processing OAuth callback with auth code:', authCode)
     
     // Use the MCP SDK OAuth to test the authenticated server
-    const authenticatedTests = await testAuthenticatedMCPServer(serverUrl, authCode, baseUrl)
+    const authenticatedTests = await testAuthenticatedMCPServer(serverUrl, authCode, baseUrl, state)
     
     return NextResponse.json({
       serverUrl,
