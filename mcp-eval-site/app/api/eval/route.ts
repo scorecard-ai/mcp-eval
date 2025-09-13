@@ -432,23 +432,25 @@ export async function POST(request: NextRequest) {
   if (authCode) {
     console.log('Processing OAuth callback with auth code:', authCode)
     
-    // We need to retrieve the stored OAuth config and client info
-    // For now, let's discover OAuth endpoints again and attempt token exchange
+    // Extract client ID from state parameter
+    let clientId = 'mcp-eval' // fallback
+    try {
+      if (state) {
+        const stateData = JSON.parse(atob(state))
+        if (stateData.clientId) {
+          clientId = stateData.clientId
+          console.log('Using client ID from state:', clientId)
+        }
+      }
+    } catch (error) {
+      console.log('Could not parse state parameter, using fallback client ID')
+    }
+    
+    // We need to retrieve the stored OAuth config for token exchange
     const oauthConfig = await discoverOAuthEndpoints(serverUrl)
     
     if (oauthConfig && oauthConfig.token_endpoint) {
-      // Try to register a new client for token exchange
-      let clientId = 'mcp-eval' // fallback
-      
-      if (oauthConfig.registration_endpoint) {
-        const clientRegistration = await registerOAuthClient(oauthConfig.registration_endpoint, baseUrl)
-        if (clientRegistration && clientRegistration.client_id) {
-          clientId = clientRegistration.client_id
-          console.log('Using registered client ID for token exchange:', clientId)
-        }
-      }
-      
-      // Attempt token exchange
+      // Attempt token exchange with the original client ID
       const tokenData = await exchangeAuthCodeForToken(
         oauthConfig.token_endpoint,
         authCode,
@@ -617,7 +619,14 @@ export async function POST(request: NextRequest) {
         const clientRegistration = await registerOAuthClient(finalOAuthConfig.registration_endpoint, baseUrl)
         
         if (clientRegistration && clientRegistration.client_id) {
-          const authUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=${clientRegistration.client_id}&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${Date.now()}&code_challenge=challenge&code_challenge_method=S256`
+          // Encode client ID in state parameter for token exchange
+          const stateData = {
+            timestamp: Date.now(),
+            clientId: clientRegistration.client_id
+          }
+          const encodedState = btoa(JSON.stringify(stateData))
+          
+          const authUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=${clientRegistration.client_id}&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}&code_challenge=challenge&code_challenge_method=S256`
           
           tests.push({
             name: 'OAuth Setup',
@@ -635,7 +644,13 @@ export async function POST(request: NextRequest) {
           })
         } else {
           // Fallback: provide manual auth URL even if registration failed
-          const manualAuthUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=mcp-eval&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${Date.now()}`
+          const stateData = {
+            timestamp: Date.now(),
+            clientId: 'mcp-eval'
+          }
+          const encodedState = btoa(JSON.stringify(stateData))
+          
+          const manualAuthUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=mcp-eval&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}`
           
           tests.push({
             name: 'OAuth Setup',
