@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 
 // OAuth flow implementation for MCP servers
 async function discoverOAuthEndpoints(serverUrl: string) {
@@ -83,22 +84,37 @@ async function exchangeAuthCodeForToken(tokenEndpoint: string, authCode: string,
   }
 }
 
-async function testAuthenticatedMCPServer(serverUrl: string, accessToken: string): Promise<TestResult[]> {
+async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, baseUrl: string): Promise<TestResult[]> {
   const tests: TestResult[] = []
   
-  // Test 1: Authenticated Connection
+  // Test 1: OAuth-based MCP Connection
   const test1Start = Date.now()
   let mcpClient: Client | null = null
   
   try {
-    // Create HTTP transport with OAuth authorization
+    // Create a simple OAuth provider for the authentication
+    const oauthProvider = {
+      redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+      clientMetadata: {
+        client_name: 'MCP Eval Tool',
+        redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+        scope: 'openid'
+      },
+      clientInformation() { return undefined },
+      tokens() { return undefined },
+      saveTokens() {},
+      redirectToAuthorization() {},
+      saveCodeVerifier() {},
+      codeVerifier() { return 'test_verifier' },
+      state() { return 'test_state' }
+    }
+
+    // Create HTTP transport with OAuth provider
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
-      // Add authorization header
-      requestInit: {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
+      authProvider: oauthProvider
     })
     
     mcpClient = new Client({
@@ -106,12 +122,14 @@ async function testAuthenticatedMCPServer(serverUrl: string, accessToken: string
       version: '1.0.0'
     }, { transport })
 
+    // Try to finish auth with the provided code
+    await transport.finishAuth(authCode)
     await mcpClient.connect()
     
     tests.push({
-      name: 'Authenticated MCP Connection',
+      name: 'OAuth MCP Connection',
       passed: true,
-      message: 'Successfully connected to MCP server with OAuth token',
+      message: 'Successfully connected to MCP server with OAuth authentication',
       duration: Date.now() - test1Start
     })
 
@@ -165,9 +183,9 @@ async function testAuthenticatedMCPServer(serverUrl: string, accessToken: string
     
   } catch (error) {
     tests.push({
-      name: 'Authenticated MCP Connection',
+      name: 'OAuth MCP Connection',
       passed: false,
-      message: `Failed to connect with OAuth token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Failed to connect with OAuth: ${error instanceof Error ? error.message : 'Unknown error'}`,
       duration: Date.now() - test1Start
     })
   } finally {
@@ -428,90 +446,21 @@ export async function POST(request: NextRequest) {
     return runAutoEvaluation(serverUrl)
   }
 
-  // If auth code is provided, handle token exchange and authenticated testing
+  // If auth code is provided, use SDK OAuth to test authenticated MCP server
   if (authCode) {
     console.log('Processing OAuth callback with auth code:', authCode)
     
-    // Extract client ID and code verifier from state parameter
-    let clientId = 'mcp-eval' // fallback
-    let codeVerifier = 'fallback_code_verifier_12345678901234567890123456789' // fallback (43+ chars)
-    try {
-      if (state) {
-        const stateData = JSON.parse(atob(state))
-        if (stateData.clientId) {
-          clientId = stateData.clientId
-          console.log('Using client ID from state:', clientId)
-        }
-        if (stateData.codeVerifier) {
-          codeVerifier = stateData.codeVerifier
-          console.log('Using code verifier from state')
-        }
-      }
-    } catch (error) {
-      console.log('Could not parse state parameter, using fallback values')
-    }
+    // Use the MCP SDK OAuth to test the authenticated server
+    const authenticatedTests = await testAuthenticatedMCPServer(serverUrl, authCode, baseUrl)
     
-    // We need to retrieve the stored OAuth config for token exchange
-    const oauthConfig = await discoverOAuthEndpoints(serverUrl)
-    
-    if (oauthConfig && oauthConfig.token_endpoint) {
-      // Attempt token exchange with the original client ID and code verifier
-      const tokenData = await exchangeAuthCodeForToken(
-        oauthConfig.token_endpoint,
-        authCode,
-        clientId,
-        baseUrl,
-        codeVerifier
-      )
-      
-      if (tokenData && tokenData.access_token) {
-        console.log('Token exchange successful, proceeding with authenticated MCP test')
-        
-        // Now test the MCP server with the access token
-        const authenticatedTests = await testAuthenticatedMCPServer(serverUrl, tokenData.access_token)
-        
-        return NextResponse.json({
-          serverUrl,
-          overallPassed: authenticatedTests.filter(t => t.passed).length,
-          totalTests: authenticatedTests.length,
-          tests: authenticatedTests,
-          timestamp: new Date().toISOString(),
-          authenticated: true,
-          tokenInfo: {
-            tokenType: tokenData.token_type,
-            scope: tokenData.scope
-          }
-        })
-      } else {
-        return NextResponse.json({
-          serverUrl,
-          overallPassed: 0,
-          totalTests: 1,
-          tests: [{
-            name: 'Token Exchange',
-            passed: false,
-            message: 'Failed to exchange authorization code for access token',
-            duration: 0
-          }],
-          timestamp: new Date().toISOString(),
-          authenticated: false
-        })
-      }
-    } else {
-      return NextResponse.json({
-        serverUrl,
-        overallPassed: 0,
-        totalTests: 1,
-        tests: [{
-          name: 'OAuth Configuration',
-          passed: false,
-          message: 'Could not retrieve OAuth configuration for token exchange',
-          duration: 0
-        }],
-        timestamp: new Date().toISOString(),
-        authenticated: false
-      })
-    }
+    return NextResponse.json({
+      serverUrl,
+      overallPassed: authenticatedTests.filter(t => t.passed).length,
+      totalTests: authenticatedTests.length,
+      tests: authenticatedTests,
+      timestamp: new Date().toISOString(),
+      authenticated: true
+    })
   }
 
   const tests: TestResult[] = []
@@ -626,8 +575,17 @@ export async function POST(request: NextRequest) {
         
         if (clientRegistration && clientRegistration.client_id) {
           // Generate proper PKCE code verifier (43+ characters)
-          const codeVerifier = btoa(Math.random().toString()).substring(0, 50)
-          const codeChallenge = codeVerifier // For simplicity, using plain method
+          const codeVerifier = btoa(Math.random().toString() + Math.random().toString()).substring(0, 50)
+          
+          // Generate S256 code challenge
+          const encoder = new TextEncoder()
+          const data = encoder.encode(codeVerifier)
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+          const hashArray = Array.from(new Uint8Array(hashBuffer))
+          const codeChallenge = btoa(String.fromCharCode.apply(null, hashArray))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '')
           
           // Encode client ID and code verifier in state parameter for token exchange
           const stateData = {
@@ -637,7 +595,7 @@ export async function POST(request: NextRequest) {
           }
           const encodedState = btoa(JSON.stringify(stateData))
           
-          const authUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=${clientRegistration.client_id}&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}&code_challenge=${codeChallenge}&code_challenge_method=plain`
+          const authUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=${clientRegistration.client_id}&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}&code_challenge=${codeChallenge}&code_challenge_method=S256`
           
           tests.push({
             name: 'OAuth Setup',
