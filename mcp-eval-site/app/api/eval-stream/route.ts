@@ -461,6 +461,126 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
   }
 }
 
+// Generate intelligent test arguments based on tool schema and name
+function generateToolArguments(tool: any): any {
+  const args: any = {}
+
+  // If tool has input schema, generate based on properties
+  if (tool.inputSchema?.properties) {
+    for (const [propName, propSchema] of Object.entries(tool.inputSchema.properties)) {
+      const schema = propSchema as any
+      args[propName] = generateValueForProperty(propName, schema, tool.name)
+    }
+  } else {
+    // Fallback: generate common arguments based on tool name patterns
+    args = generateFallbackArguments(tool.name, tool.description)
+  }
+
+  return args
+}
+
+function generateValueForProperty(propName: string, schema: any, toolName: string): any {
+  const name = propName.toLowerCase()
+  const type = schema.type || 'string'
+
+  // Type-based generation
+  if (type === 'string') {
+    // Smart string generation based on property name
+    if (name.includes('url') || name.includes('link')) {
+      return 'https://example.com'
+    }
+    if (name.includes('email')) {
+      return 'test@example.com'
+    }
+    if (name.includes('query') || name.includes('search')) {
+      return 'test query'
+    }
+    if (name.includes('message') || name.includes('text') || name.includes('content')) {
+      return 'Hello, this is a test message'
+    }
+    if (name.includes('name') || name.includes('title')) {
+      return 'Test Item'
+    }
+    if (name.includes('path') || name.includes('file')) {
+      return '/test/path'
+    }
+    if (name.includes('id')) {
+      return 'test-id-123'
+    }
+    if (name.includes('code')) {
+      return 'console.log("Hello World");'
+    }
+    if (name.includes('lang') || name.includes('language')) {
+      return 'javascript'
+    }
+    // Default string
+    return schema.default || 'test value'
+  }
+
+  if (type === 'number' || type === 'integer') {
+    return schema.default || 42
+  }
+
+  if (type === 'boolean') {
+    return schema.default !== undefined ? schema.default : true
+  }
+
+  if (type === 'array') {
+    return schema.default || ['test item']
+  }
+
+  if (type === 'object') {
+    return schema.default || {}
+  }
+
+  return schema.default || null
+}
+
+function generateFallbackArguments(toolName: string, description?: string): any {
+  const name = toolName.toLowerCase()
+  const desc = (description || '').toLowerCase()
+
+  // Generate arguments based on common tool patterns
+  if (name.includes('search') || name.includes('find') || name.includes('query')) {
+    return { query: 'test search', limit: 5 }
+  }
+
+  if (name.includes('create') || name.includes('add') || name.includes('new')) {
+    return { name: 'Test Item', description: 'A test item created by MCP Eval' }
+  }
+
+  if (name.includes('get') || name.includes('fetch') || name.includes('read')) {
+    return { id: 'test-123' }
+  }
+
+  if (name.includes('update') || name.includes('edit') || name.includes('modify')) {
+    return { id: 'test-123', name: 'Updated Test Item' }
+  }
+
+  if (name.includes('delete') || name.includes('remove')) {
+    return { id: 'test-123' }
+  }
+
+  if (name.includes('list') || name.includes('all')) {
+    return { limit: 10, offset: 0 }
+  }
+
+  if (name.includes('send') || name.includes('post') || name.includes('message')) {
+    return { message: 'Hello from MCP Eval test', recipient: 'test@example.com' }
+  }
+
+  if (name.includes('file') || name.includes('document')) {
+    return { path: '/test/document.txt', content: 'Test file content' }
+  }
+
+  if (name.includes('code') || name.includes('script') || name.includes('run')) {
+    return { code: 'console.log("Hello from MCP Eval");', language: 'javascript' }
+  }
+
+  // Default minimal args
+  return {}
+}
+
 async function testMCPServerWithAuthentication(
   serverUrl: string,
   authCode: string,
@@ -552,36 +672,57 @@ async function testMCPServerWithAuthentication(
       details: { tools: toolsListResult.tools, toolCount }
     })
 
-    // Step 4: Test calling a tool if available
+    // Step 4: Test multiple tools with intelligent arguments
     if (toolsListResult.tools && toolsListResult.tools.length > 0) {
-      const sampleTool = toolsListResult.tools[0]
-      logger.log(`🧪 Testing tool call: ${sampleTool.name}`)
+      logger.log(`🧪 Running intelligent test scenarios for ${Math.min(5, toolsListResult.tools.length)} tools...`)
 
-      try {
-        const callResult = await mcpClient.callTool({
-          name: sampleTool.name,
-          arguments: {}
-        })
+      // Test up to 5 different tools with smart arguments
+      const toolsToTest = toolsListResult.tools.slice(0, 5)
 
-        tests.push({
-          name: 'Authenticated Tool Call',
-          passed: true,
-          message: `Successfully called tool "${sampleTool.name}"`,
-          duration: Date.now(),
-          details: { toolName: sampleTool.name, result: callResult }
-        })
+      for (const tool of toolsToTest) {
+        logger.log(`🔧 Testing tool: ${tool.name}`)
 
-        logger.log(`✅ Tool call successful: ${sampleTool.name}`)
-      } catch (toolError) {
-        tests.push({
-          name: 'Authenticated Tool Call',
-          passed: false,
-          message: `Tool call failed: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`,
-          duration: Date.now(),
-          details: { toolName: sampleTool.name }
-        })
+        try {
+          // Generate intelligent arguments based on tool schema
+          const testArgs = generateToolArguments(tool)
+          logger.log(`📝 Generated arguments for ${tool.name}: ${JSON.stringify(testArgs)}`)
 
-        logger.log(`❌ Tool call failed: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`)
+          const callResult = await mcpClient.callTool({
+            name: tool.name,
+            arguments: testArgs
+          })
+
+          tests.push({
+            name: `Tool: ${tool.name}`,
+            passed: true,
+            message: `Successfully called "${tool.name}" with generated arguments`,
+            duration: Date.now(),
+            details: {
+              toolName: tool.name,
+              arguments: testArgs,
+              result: callResult,
+              description: tool.description
+            }
+          })
+
+          logger.log(`✅ Tool call successful: ${tool.name}`)
+        } catch (toolError) {
+          const errorMsg = toolError instanceof Error ? toolError.message : 'Unknown error'
+
+          tests.push({
+            name: `Tool: ${tool.name}`,
+            passed: false,
+            message: `Tool call failed: ${errorMsg}`,
+            duration: Date.now(),
+            details: {
+              toolName: tool.name,
+              error: errorMsg,
+              description: tool.description
+            }
+          })
+
+          logger.log(`❌ Tool call failed for ${tool.name}: ${errorMsg}`)
+        }
       }
     }
 
