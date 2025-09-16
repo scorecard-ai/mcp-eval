@@ -201,17 +201,14 @@ Example format:
   }
 }
 
-// Generate example tasks for each discovered tool (LLM-backed with heuristics fallback)
-async function generateExampleTasksForTools(tools: any[]) {
-  if (!tools || tools.length === 0) return [] as any[]
-
-  const toolsSpec = tools.map((t: any) => ({
+// Generate high-level user tasks that reflect real end-user goals
+async function generateHighLevelUserTasks(tools: any[]) {
+  const toolsBrief = (tools || []).slice(0, 12).map((t: any) => ({
     name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema || null
+    description: t.description || ''
   }))
 
-  const prompt = `You are generating concrete example tasks for an MCP server's tools.\n\nFor EACH tool below, create 1-2 short, practical tasks a user would ask for that involve that specific tool. For each task, also propose example arguments matching the tool's input schema (best-effort).\n\nTOOLS (JSON):\n${JSON.stringify(toolsSpec, null, 2)}\n\nReturn STRICT JSON with this exact shape (array):\n[\n  {\n    "tool": "<tool name>",\n    "tasks": [\n      { "title": "...", "description": "...", "exampleArguments": { } }\n    ]\n  }\n]\nInclude an entry for each tool in the same order. Do not include any extra text.`
+  const prompt = `You are generating concise, high-level user tasks for an MCP server.\n\nGoal: Propose realistic end-user tasks (not per-tool tests). Each task should describe what a user wants to accomplish, not how to call tools. Optionally suggest which tools might be involved.\n\nTOOLS (brief):\n${JSON.stringify(toolsBrief, null, 2)}\n\nReturn STRICT JSON array of 5-7 tasks, each: {\n  \"title\": string,\n  \"description\": string,\n  \"expectedTools\": string[] // optional best-guess by name\n}\nNo extra text.`
 
   try {
     if (process.env.OPENAI_API_KEY) {
@@ -224,53 +221,43 @@ async function generateExampleTasksForTools(tools: any[]) {
         body: JSON.stringify({
           model: 'gpt-5-mini',
           input: prompt,
-          max_output_tokens: 4000
+          max_output_tokens: 2000
         })
       })
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
-      }
-
+      if (!response.ok) throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
       const data = await response.json()
       let text: string | null = null
-      if (data.output && Array.isArray(data.output)) {
+      if (Array.isArray(data.output)) {
         const msg = data.output.find((it: any) => it.type === 'message')
-        if (msg?.content && Array.isArray(msg.content)) {
-          const t = msg.content.find((c: any) => c.type === 'output_text')
-          text = t?.text || null
-        }
+        const t = msg?.content?.find?.((c: any) => c.type === 'output_text')
+        text = t?.text || null
       }
       if (!text) throw new Error('Missing text content in Responses output')
       const parsed = JSON.parse(text)
-      if (Array.isArray(parsed)) return parsed
+      if (Array.isArray(parsed)) return parsed.slice(0, 7)
       throw new Error('LLM output not an array')
     }
   } catch (e) {
-    console.error('Example task generation via LLM failed, using fallback:', e)
+    console.error('High-level task generation via LLM failed, using fallback:', e)
   }
 
-  // Fallback: one smoke-test task per tool using generated arguments
-  const results: any[] = []
-  for (const tool of tools) {
-    const args = generateToolArguments(tool)
-    const toolName = tool.name || 'unknown_tool'
-    const desc = typeof tool.description === 'string' && tool.description.trim().length > 0
-      ? tool.description.trim()
-      : 'Perform the primary operation of this tool.'
+  // Fallback heuristics: craft generic high-level tasks using discovered domain hints
+  const names = (tools || []).map((t: any) => String(t.name || '')).join(' ').toLowerCase()
+  const hasSearch = /search|find|query/.test(names)
+  const hasCreate = /create|add|new|submit|place|order/.test(names)
+  const hasUpdate = /update|edit|modify/.test(names)
+  const hasDelete = /delete|remove|cancel/.test(names)
+  const hasReport = /report|export|summary|analy/.test(names)
 
-    results.push({
-      tool: toolName,
-      tasks: [
-        {
-          title: `Use ${toolName} (smoke test)`,
-          description: `Run a basic call of ${toolName}. ${desc}`,
-          exampleArguments: args
-        }
-      ]
-    })
-  }
-  return results
+  const tasks: any[] = []
+  tasks.push({ title: 'Complete a typical end-to-end workflow', description: 'Go from discovery to execution using the most important tools in a realistic sequence.', expectedTools: [] })
+  if (hasSearch) tasks.push({ title: 'Find something specific', description: 'Search for a specific item by keyword and refine results, then select the best option.', expectedTools: [] })
+  if (hasCreate) tasks.push({ title: 'Create a new item/request', description: 'Provide necessary details to create/place a new item or request, validate inputs, and confirm the result.', expectedTools: [] })
+  if (hasUpdate) tasks.push({ title: 'Update an existing item', description: 'Locate an existing item and update a key attribute, verifying changes persisted.', expectedTools: [] })
+  if (hasDelete) tasks.push({ title: 'Cancel or delete an item', description: 'Safely remove or cancel an item with proper confirmation and error handling.', expectedTools: [] })
+  if (hasReport) tasks.push({ title: 'Generate a summary/report', description: 'Aggregate relevant data and produce a concise summary or downloadable report.', expectedTools: [] })
+  if (tasks.length < 5) tasks.push({ title: 'Review recent activity', description: 'List recent activity or items and highlight notable changes.', expectedTools: [] })
+  return tasks.slice(0, 7)
 }
 
 async function testMCPServerWithCLI(serverUrl: string, logger: any, request: NextRequest) {
@@ -299,24 +286,24 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
       details: { toolCount, tools: toolsResult.tools }
     })
 
-    // Per-tool example tasks
+    // High-level user tasks
     try {
-      logger.log('🧪 Generating per-tool example tasks...')
-      const perTool = await generateExampleTasksForTools((toolsResult as any).tools || [])
+      logger.log('🧪 Generating high-level user tasks...')
+      const highLevel = await generateHighLevelUserTasks((toolsResult as any).tools || [])
       tests.push({
-        name: 'Per-Tool Example Tasks',
+        name: 'High-Level User Tasks',
         passed: true,
-        message: `Generated example tasks for ${perTool.length} tools`,
+        message: `Generated ${highLevel.length} user tasks`,
         duration: Date.now(),
-        details: { items: perTool }
+        details: { tasks: highLevel }
       })
-      logger.log(`✅ Generated per-tool tasks for ${perTool.length} tools`)
+      logger.log(`✅ Generated ${highLevel.length} high-level tasks`)
     } catch (e) {
-      logger.log(`⚠️  Per-tool task generation failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      logger.log(`⚠️  High-level task generation failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
       tests.push({
-        name: 'Per-Tool Example Tasks',
+        name: 'High-Level User Tasks',
         passed: false,
-        message: 'Failed to generate per-tool tasks',
+        message: 'Failed to generate high-level user tasks',
         duration: Date.now(),
         details: { error: e instanceof Error ? e.message : String(e) }
       })
@@ -684,24 +671,24 @@ async function testMCPServerWithAuthentication(
       details: { tools: toolsListResult.tools, toolCount }
     })
 
-    // Per-tool example tasks (authenticated)
+    // High-level user tasks (authenticated)
     try {
-      logger.log('🧪 Generating per-tool example tasks (authenticated)...')
-      const perTool = await generateExampleTasksForTools(toolsListResult.tools || [])
+      logger.log('🧪 Generating high-level user tasks (authenticated)...')
+      const highLevel = await generateHighLevelUserTasks(toolsListResult.tools || [])
       tests.push({
-        name: 'Per-Tool Example Tasks',
+        name: 'High-Level User Tasks',
         passed: true,
-        message: `Generated example tasks for ${perTool.length} tools`,
+        message: `Generated ${highLevel.length} user tasks`,
         duration: Date.now(),
-        details: { items: perTool }
+        details: { tasks: highLevel }
       })
-      logger.log(`✅ Generated per-tool tasks for ${perTool.length} tools`)
+      logger.log(`✅ Generated ${highLevel.length} high-level tasks`)
     } catch (e) {
-      logger.log(`⚠️  Per-tool task generation (authenticated) failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      logger.log(`⚠️  High-level task generation (authenticated) failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
       tests.push({
-        name: 'Per-Tool Example Tasks',
+        name: 'High-Level User Tasks',
         passed: false,
-        message: 'Failed to generate per-tool tasks (authenticated)',
+        message: 'Failed to generate high-level user tasks (authenticated)',
         duration: Date.now(),
         details: { error: e instanceof Error ? e.message : String(e) }
       })

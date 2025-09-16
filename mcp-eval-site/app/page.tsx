@@ -511,8 +511,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* Per-Tool Example Tasks */}
-          {results?.tests?.find(t => t.name === 'Per-Tool Example Tasks' && t.details?.items) && (
+          {/* High-Level User Tasks */}
+          {results?.tests?.find(t => t.name === 'High-Level User Tasks' && t.details?.tasks) && (
             <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -522,31 +522,19 @@ export default function Home() {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-blue-900 mb-2">
-                    🔧 Per-Tool Example Tasks
+                    🧭 High-Level User Tasks
                   </h3>
                   <p className="text-blue-800 mb-4">
-                    Auto-generated example tasks and arguments for each discovered tool.
+                    User-centered tasks that represent realistic goals this MCP server can help accomplish.
                   </p>
                   <div className="space-y-4">
-                    {results.tests.find(t => t.name === 'Per-Tool Example Tasks')?.details?.items?.map((entry: any, idx: number) => (
+                    {results.tests.find(t => t.name === 'High-Level User Tasks')?.details?.tasks?.map((task: any, idx: number) => (
                       <div key={idx} className="bg-white p-4 rounded-lg border border-blue-100">
-                        <div className="flex items-start justify-between mb-2">
-                          <h4 className="font-medium text-gray-900">{entry.tool}</h4>
-                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                            {entry.tasks?.length || 0} task{(entry.tasks?.length || 0) === 1 ? '' : 's'}
-                          </span>
-                        </div>
-                        {(entry.tasks || []).map((task: any, tIdx: number) => (
-                          <div key={tIdx} className="mt-3">
-                            <div className="text-sm font-medium text-gray-800">{task.title}</div>
-                            <div className="text-sm text-gray-600 mb-2">{task.description}</div>
-                            {task.exampleArguments && (
-                              <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto">
-{JSON.stringify(task.exampleArguments, null, 2)}
-                              </pre>
-                            )}
-                          </div>
-                        ))}
+                        <div className="text-sm font-medium text-gray-900">{task.title}</div>
+                        <div className="text-sm text-gray-600 mb-2">{task.description}</div>
+                        {Array.isArray(task.expectedTools) && task.expectedTools.length > 0 && (
+                          <div className="text-xs text-gray-500">Suggested tools: {task.expectedTools.join(', ')}</div>
+                        )}
                       </div>
                     ))}
                   </div>
