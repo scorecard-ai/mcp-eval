@@ -90,7 +90,7 @@ async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
     // Step 2: Discover authorization server metadata
     const authServerUrl = resourceMetadata?.authorization_server || serverUrl
     console.log('🔍 Discovering authorization server metadata from:', authServerUrl)
-    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl)
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
     console.log('Auth server metadata:', authServerMetadata)
     
     // Step 3: Define client metadata
@@ -105,7 +105,7 @@ async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
     
     // Step 4: Register client dynamically
     console.log('📝 Registering OAuth client...')
-    const clientInformation = await registerClient(authServerUrl, {
+    const clientInformation = await registerClient(authServerUrl as string, {
       metadata: authServerMetadata,
       clientMetadata
     })
@@ -113,7 +113,7 @@ async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
     
     // Step 5: Start authorization flow
     console.log('🚀 Starting authorization flow...')
-    const authResult = await startAuthorization(authServerUrl, {
+    const authResult = await startAuthorization(authServerUrl as string, {
       metadata: authServerMetadata,
       clientInformation,
       redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
@@ -144,7 +144,7 @@ async function performOAuthTokenExchange(serverUrl: string, authCode: string, cl
     // Discover OAuth metadata again (we need the auth server URL)
     const resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl)
     const authServerUrl = resourceMetadata?.authorization_server || serverUrl
-    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl)
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
     
     // Exchange the authorization code for tokens
     const tokens = await exchangeAuthorization(authServerUrl, {
