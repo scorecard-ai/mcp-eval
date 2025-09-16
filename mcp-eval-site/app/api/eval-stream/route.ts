@@ -200,7 +200,7 @@ Example format:
   }
 }
 
-async function testMCPServerWithCLI(serverUrl: string, logger: any) {
+async function testMCPServerWithCLI(serverUrl: string, logger: any, request: NextRequest) {
   const tests: any[] = []
   const test1Start = Date.now()
   
@@ -483,7 +483,7 @@ export async function GET(request: NextRequest) {
         
         // For authenticated requests, we need to implement authenticated evaluation
         // For now, run the basic test but this should be enhanced with actual authentication
-        testMCPServerWithCLI(serverUrl, logger)
+        testMCPServerWithCLI(serverUrl, logger, request)
           .then((result) => {
             // Send final result
             const data = JSON.stringify({ type: 'result', result })
@@ -501,7 +501,7 @@ export async function GET(request: NextRequest) {
           })
       } else {
         // Regular unauthenticated evaluation
-        testMCPServerWithCLI(serverUrl, logger)
+        testMCPServerWithCLI(serverUrl, logger, request)
           .then((result) => {
             // Send final result
             const data = JSON.stringify({ type: 'result', result })
