@@ -214,7 +214,7 @@ async function generateHighLevelUserTasks(tools: any[]) {
     description: t.description || ''
   }))
 
-  const prompt = `You are generating concise, high-level user tasks for an MCP server.\n\nGoal: Propose realistic end-user tasks (not per-tool tests). Each task should describe what a user wants to accomplish, not how to call tools. Optionally suggest which tools might be involved.\n\nTOOLS (brief):\n${JSON.stringify(toolsBrief, null, 2)}\n\nReturn STRICT JSON array of 5-7 tasks, each: {\n  \"title\": string,\n  \"description\": string,\n  \"expectedTools\": string[] // optional best-guess by name\n}\nNo extra text.`
+  const prompt = `You are generating concise, high-level user tasks for an MCP server.\n\nGoal: Propose realistic end-user tasks (not per-tool tests). Each task should describe what a user wants to accomplish, not how to call tools. Optionally suggest which tools might be involved.\n\nTOOLS (brief):\n${JSON.stringify(toolsBrief, null, 2)}\n\nReturn STRICT JSON array of exactly 4 tasks, each: {\n  \"title\": string,\n  \"description\": string,\n  \"expectedTools\": string[] // optional best-guess by name\n}\nNo extra text.`
 
   try {
     if (process.env.OPENAI_API_KEY) {
@@ -246,7 +246,7 @@ async function generateHighLevelUserTasks(tools: any[]) {
       }
       if (!text) throw new Error('Missing text content in Responses output')
       const parsed = JSON.parse(text)
-      if (Array.isArray(parsed)) return parsed.slice(0, 7)
+      if (Array.isArray(parsed)) return parsed.slice(0, 4)
       throw new Error('LLM output not an array')
     }
   } catch (e) {
@@ -268,8 +268,14 @@ async function generateHighLevelUserTasks(tools: any[]) {
   if (hasUpdate) tasks.push({ title: 'Update an existing item', description: 'Locate an existing item and update a key attribute, verifying changes persisted.', expectedTools: [] })
   if (hasDelete) tasks.push({ title: 'Cancel or delete an item', description: 'Safely remove or cancel an item with proper confirmation and error handling.', expectedTools: [] })
   if (hasReport) tasks.push({ title: 'Generate a summary/report', description: 'Aggregate relevant data and produce a concise summary or downloadable report.', expectedTools: [] })
-  if (tasks.length < 5) tasks.push({ title: 'Review recent activity', description: 'List recent activity or items and highlight notable changes.', expectedTools: [] })
-  return tasks.slice(0, 7)
+  if (tasks.length < 4) tasks.push({ title: 'Review recent activity', description: 'List recent activity or items and highlight notable changes.', expectedTools: [] })
+  // Ensure at least 4 tasks by padding generic goals if needed
+  const padding = [
+    { title: 'Get help or support', description: 'Ask for assistance and resolve a common user issue end-to-end.', expectedTools: [] },
+    { title: 'Track status of a request', description: 'Check current status, interpret results, and suggest next actions.', expectedTools: [] }
+  ]
+  while (tasks.length < 4 && padding.length) tasks.push(padding.shift() as any)
+  return tasks.slice(0, 4)
 }
 
 async function testMCPServerWithCLI(serverUrl: string, logger: any, request: NextRequest) {
