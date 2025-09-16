@@ -210,6 +210,8 @@ Example format:
 
   try {
     // Use OpenAI Responses API for GPT-5 Mini
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 7000)
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -219,9 +221,13 @@ Example format:
       body: JSON.stringify({
         model: 'gpt-5-mini',
         input: prompt,
-        max_output_tokens: 2000
-      })
+        max_output_tokens: 800,
+        reasoning: { effort: 'low' },
+        temperature: 0.2
+      }),
+      signal: controller.signal
     })
+    clearTimeout(timeout)
 
     if (!response.ok) {
       const errorText = await response.text()

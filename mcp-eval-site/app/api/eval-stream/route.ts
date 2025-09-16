@@ -120,6 +120,8 @@ Example format:
 
   try {
     // Use OpenAI Responses API for GPT-5 Mini
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 7000)
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -129,9 +131,13 @@ Example format:
       body: JSON.stringify({
         model: 'gpt-5-mini',
         input: prompt,
-        max_output_tokens: 2000
-      })
+        max_output_tokens: 800,
+        reasoning: { effort: 'low' },
+        temperature: 0.2
+      }),
+      signal: controller.signal
     })
+    clearTimeout(timeout)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -212,18 +218,24 @@ async function generateHighLevelUserTasks(tools: any[]) {
 
   try {
     if (process.env.OPENAI_API_KEY) {
-      const response = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-5-mini',
-          input: prompt,
-          max_output_tokens: 2000
-        })
-      })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 7000)
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-mini',
+        input: prompt,
+        max_output_tokens: 700,
+        reasoning: { effort: 'low' },
+        temperature: 0.2
+      }),
+      signal: controller.signal
+    })
+    clearTimeout(timeout)
       if (!response.ok) throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
       const data = await response.json()
       let text: string | null = null
