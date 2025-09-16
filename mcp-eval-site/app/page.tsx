@@ -8,6 +8,7 @@ type TestResult = {
   passed: boolean
   message: string
   duration?: number
+  details?: any
 }
 
 type EvalResults = {
