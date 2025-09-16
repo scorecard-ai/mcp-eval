@@ -59,7 +59,7 @@ async function setupOAuthFlowWithLogging(serverUrl: string, baseUrl: string, log
     const authResult = await startAuthorization(authServerUrl as string, {
       metadata: authServerMetadata,
       clientInformation,
-      redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+      redirectUri: `${baseUrl}/api/mcp-auth-callback`,
       scope: 'openid'
     })
     
@@ -413,7 +413,7 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
         const authResult = await startAuthorization(authServerUrl as string, {
           metadata: authServerMetadata,
           clientInformation,
-          redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+          redirectUri: `${baseUrl}/api/mcp-auth-callback`,
           scope: 'openid',
           resource: new URL(serverUrl)
         })
@@ -490,7 +490,7 @@ async function testMCPServerWithAuthentication(
       clientInformation: clientInfo,
       authorizationCode: authCode,
       codeVerifier,
-      redirectUrl: `${baseUrl}/api/mcp-auth-callback`
+      redirectUri: `${baseUrl}/api/mcp-auth-callback`
     })
 
     logger.log('✅ OAuth token exchange successful')
