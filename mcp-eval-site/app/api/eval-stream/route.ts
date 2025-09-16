@@ -515,7 +515,7 @@ async function testMCPServerWithAuthentication(
       },
       clientInformation: clientInfo,
       tokens: () => tokens,
-      codeVerifier: codeVerifier,
+      codeVerifier: () => codeVerifier,
       getAuthHeader: () => `Bearer ${tokens.access_token}`,
       startAuthFlow: async () => { throw new Error('Auth flow already completed') },
       finishAuthFlow: async () => { throw new Error('Auth flow already completed') },
