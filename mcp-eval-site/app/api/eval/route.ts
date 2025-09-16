@@ -257,7 +257,7 @@ Example format:
     } catch (parseError) {
       console.error('❌ JSON parsing failed, raw response:', scenariosText)
       console.error('❌ Parse error:', parseError)
-      throw new Error(`Failed to parse OpenAI response as JSON: ${parseError.message}`)
+      throw new Error(`Failed to parse OpenAI response as JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
     }
     
     // Ensure we have an array and limit to 1 scenario if multiple returned

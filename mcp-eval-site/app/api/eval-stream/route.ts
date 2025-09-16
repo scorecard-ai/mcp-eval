@@ -239,7 +239,7 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any) {
             const result = JSON.parse(stdout)
             resolve(result)
           } catch (parseError) {
-            reject(new Error(`Failed to parse CLI output: ${parseError.message}`))
+            reject(new Error(`Failed to parse CLI output: ${parseError instanceof Error ? parseError.message : String(parseError)}`))
           }
         } else {
           reject(new Error(`CLI inspector failed with code ${code}: ${stderr || stdout}`))
