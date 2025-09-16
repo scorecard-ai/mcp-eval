@@ -502,13 +502,26 @@ async function testMCPServerWithAuthentication(
       version: '1.0.0'
     })
 
-    // Create a simple auth provider with the access token
-    const authProvider = {
-      getAuthHeader: () => `Bearer ${tokens.access_token}`
+    // Create OAuth provider with the tokens
+    const oauthProvider = {
+      redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+      clientMetadata: {
+        client_name: 'MCP Eval Tool',
+        client_uri: baseUrl,
+        redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        scope: 'openid'
+      },
+      clientInformation: clientInfo,
+      tokens: tokens,
+      getAuthHeader: () => `Bearer ${tokens.access_token}`,
+      startAuthFlow: async () => { throw new Error('Auth flow already completed') },
+      finishAuthFlow: async () => { throw new Error('Auth flow already completed') }
     }
 
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
-      authProvider
+      authProvider: oauthProvider
     })
 
     await mcpClient.connect(transport)
