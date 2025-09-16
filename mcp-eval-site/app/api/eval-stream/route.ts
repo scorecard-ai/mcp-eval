@@ -463,7 +463,7 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
 
 // Generate intelligent test arguments based on tool schema and name
 function generateToolArguments(tool: any): any {
-  const args: any = {}
+  let args: any = {}
 
   // If tool has input schema, generate based on properties
   if (tool.inputSchema?.properties) {
