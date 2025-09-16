@@ -277,68 +277,26 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
   const tests: any[] = []
   const test1Start = Date.now()
   
-  logger.log('🔗 Testing MCP server using official CLI inspector...')
+  logger.log('🔗 Testing MCP server using MCP SDK (no CLI)...')
   
   try {
-    // Test 1: Basic connection and tool discovery
-    logger.log('📋 Discovering available tools with CLI inspector...')
-    
-    const { spawn } = require('child_process')
-    const toolsResult = await new Promise((resolve, reject) => {
-      const child = spawn('npx', [
-        '@modelcontextprotocol/inspector',
-        '--cli',
-        serverUrl,
-        '--transport', 'http',
-        '--method', 'tools/list'
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          HOME: '/tmp',
-          NPM_CONFIG_CACHE: '/tmp/.npm',
-          NPM_CONFIG_PREFIX: '/tmp/.npm-global'
-        }
-      })
+    // Test 1: Basic connection and tool discovery via SDK
+    logger.log('📋 Connecting and discovering tools via MCP SDK...')
 
-      let stdout = ''
-      let stderr = ''
+    const mcpClient = new Client({ name: 'mcp-eval-sdk', version: '1.0.0' })
+    const transport = new StreamableHTTPClientTransport(new URL(serverUrl))
+    await mcpClient.connect(transport)
 
-      child.stdout.on('data', (data: Buffer) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data: Buffer) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code: number) => {
-        if (code === 0) {
-          try {
-            const result = JSON.parse(stdout)
-            resolve(result)
-          } catch (parseError) {
-            reject(new Error(`Failed to parse CLI output: ${parseError instanceof Error ? parseError.message : String(parseError)}`))
-          }
-        } else {
-          reject(new Error(`CLI inspector failed with code ${code}: ${stderr || stdout}`))
-        }
-      })
-
-      child.on('error', (error: Error) => {
-        reject(new Error(`Failed to spawn CLI inspector: ${error.message}`))
-      })
-    })
-
-    const toolCount = (toolsResult as any).tools?.length || 0
+    const toolsResult = await mcpClient.listTools()
+    const toolCount = toolsResult.tools?.length || 0
     logger.log(`✅ Found ${toolCount} tools`)
 
     tests.push({
-      name: 'Tool Discovery via CLI',
+      name: 'Tool Discovery',
       passed: true,
-      message: `Found ${toolCount} tools using CLI inspector`,
+      message: `Found ${toolCount} tools using MCP SDK`,
       duration: Date.now() - test1Start,
-      details: { toolCount, tools: (toolsResult as any).tools }
+      details: { toolCount, tools: toolsResult.tools }
     })
 
     // Per-tool example tasks
@@ -381,77 +339,37 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
       details: { scenarios, toolCount }
     })
 
-    // Test 3: Try calling a sample tool
-    if ((toolsResult as any).tools && (toolsResult as any).tools.length > 0) {
-      logger.log('🔧 Testing tool execution with CLI inspector...')
+    // Test 3: Try calling a sample tool via SDK
+    if (toolsResult.tools && toolsResult.tools.length > 0) {
+      logger.log('🔧 Testing tool execution via MCP SDK...')
       const test3Start = Date.now()
-      const sampleTool = (toolsResult as any).tools[0]
-      
+      const sampleTool = toolsResult.tools[0]
       try {
-        const toolCallResult = await new Promise((resolve, reject) => {
-          const child = spawn('npx', [
-            '@modelcontextprotocol/inspector',
-            '--cli',
-            serverUrl,
-            '--transport', 'http',
-            '--method', 'tools/call',
-            '--tool-name', sampleTool.name,
-            '--tool-arg', 'test=true'
-          ], {
-            stdio: ['pipe', 'pipe', 'pipe']
-          })
-
-          let stdout = ''
-          let stderr = ''
-
-          child.stdout.on('data', (data: Buffer) => {
-            stdout += data.toString()
-          })
-
-          child.stderr.on('data', (data: Buffer) => {
-            stderr += data.toString()
-          })
-
-          child.on('close', (code: number) => {
-            if (code === 0) {
-              resolve(stdout)
-            } else {
-              // Tool call might fail due to auth or invalid params, but that's expected
-              resolve({ error: stderr || stdout })
-            }
-          })
-
-          child.on('error', (error: Error) => {
-            resolve({ error: error.message })
-          })
-        })
-
+        const testArgs = generateToolArguments(sampleTool)
+        const toolCallResult = await mcpClient.callTool({ name: sampleTool.name, arguments: testArgs })
         tests.push({
           name: 'Sample Tool Execution',
           passed: true,
-          message: `Attempted to call tool "${sampleTool.name}" via CLI`,
+          message: `Called tool "${sampleTool.name}" via SDK`,
           duration: Date.now() - test3Start,
-          details: { 
-            toolName: sampleTool.name,
-            result: toolCallResult
-          }
+          details: { toolName: sampleTool.name, arguments: testArgs, result: toolCallResult }
         })
-        
         logger.log(`✅ Tested tool execution for "${sampleTool.name}"`)
       } catch (toolError) {
-        logger.log(`⚠️  Tool execution test completed with expected auth requirement`)
+        const msg = toolError instanceof Error ? toolError.message : 'Unknown error'
+        logger.log(`⚠️  Tool execution test completed with error: ${msg}`)
         tests.push({
           name: 'Sample Tool Execution',
-          passed: true,
-          message: `Tool "${sampleTool.name}" requires authentication (expected)`,
+          passed: false,
+          message: `Tool execution failed: ${msg}`,
           duration: Date.now() - test3Start,
-          details: { 
-            toolName: sampleTool.name,
-            requiresAuth: true
-          }
+          details: { toolName: sampleTool.name, error: msg }
         })
       }
     }
+
+    // Close client
+    await mcpClient.close()
 
     return {
       serverUrl,
@@ -537,8 +455,7 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
           duration: Date.now() - test1Start,
           details: {
             requiresAuth: true,
-            cliCommand: `npx @modelcontextprotocol/inspector --cli ${serverUrl}`,
-            message: 'Use the CLI inspector directly for interactive OAuth authentication'
+            message: 'Use the provided OAuth authorization URL to authenticate'
           }
         })
       }
