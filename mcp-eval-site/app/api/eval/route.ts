@@ -147,7 +147,7 @@ async function performOAuthTokenExchange(serverUrl: string, authCode: string, cl
     const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
     
     // Exchange the authorization code for tokens
-    const tokens = await exchangeAuthorization(authServerUrl, {
+    const tokens = await exchangeAuthorization(authServerUrl as string, {
       metadata: authServerMetadata,
       clientInformation,
       authorizationCode: authCode,
