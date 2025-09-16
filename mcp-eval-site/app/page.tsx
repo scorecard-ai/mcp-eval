@@ -45,6 +45,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [authRequired, setAuthRequired] = useState<any>(null)
   const [statusMessage, setStatusMessage] = useState<string>('')
+  const [compact, setCompact] = useState(true)
+  const [showAllScenarios, setShowAllScenarios] = useState(false)
+  const [showAllTasks, setShowAllTasks] = useState(false)
 
   // Handle OAuth callback
   useEffect(() => {
@@ -421,6 +424,13 @@ export default function Home() {
                 />
               </div>
             </div>
+            <button
+              onClick={() => setCompact(!compact)}
+              className={`ml-auto px-3 py-1.5 text-xs rounded-full border ${compact ? 'bg-gray-100 border-gray-300 text-gray-700' : 'bg-blue-50 border-blue-300 text-blue-700'}`}
+              title="Toggle compact view"
+            >
+              {compact ? 'Compact' : 'Detailed'}
+            </button>
           </div>
         </div>
 
@@ -438,24 +448,28 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {results.tests.map((test, index) => (
-              <div key={index} className="border-b border-gray-100 pb-4 last:border-b-0">
+              <div key={index} className="border-b border-gray-100 pb-3 last:border-b-0">
                 <div className="flex items-start gap-3">
-                  <div className={`w-3 h-3 rounded-full mt-1.5 flex-shrink-0 ${
+                  <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${
                     test.passed ? 'bg-green-500' : 'bg-red-500'
                   }`} />
                   <div className="flex-1">
-                    <h3 className="text-lg text-blue-600 mb-1">
+                    <h3 className="text-base text-blue-600 mb-0.5">
                       {test.name}
                     </h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      {test.message}
-                    </p>
-                    {test.duration && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {test.duration}ms
-                      </div>
+                    {!compact && (
+                      <>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                          {test.message}
+                        </p>
+                        {test.duration && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {test.duration}ms
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -480,7 +494,10 @@ export default function Home() {
                     Based on the {results.tests.find(t => t.name === 'Authenticated Tool Discovery')?.details?.toolCount || 0} discovered tools, we've generated realistic test scenarios:
                   </p>
                   <div className="space-y-3">
-                    {results.tests.find(t => t.name === 'Test Scenario Generation')?.details?.scenarios?.map((scenario: any, index: number) => (
+                    {(showAllScenarios || !compact
+                      ? results.tests.find(t => t.name === 'Test Scenario Generation')?.details?.scenarios
+                      : results.tests.find(t => t.name === 'Test Scenario Generation')?.details?.scenarios?.slice(0, 3)
+                    )?.map((scenario: any, index: number) => (
                       <div key={index} className="bg-white p-4 rounded-lg border border-purple-100">
                         <div className="flex items-start justify-between mb-2">
                           <h4 className="font-medium text-gray-900">{scenario.title}</h4>
@@ -501,11 +518,13 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-4 p-3 bg-purple-100 rounded-lg">
-                    <p className="text-sm text-purple-800">
-                      💡 <strong>Coming Soon:</strong> Run these scenarios with different LLMs (GPT-4o, Claude 3.5) to test tool compatibility and see which model works best with your MCP server!
-                    </p>
-                  </div>
+                  {compact && (results.tests.find(t => t.name === 'Test Scenario Generation')?.details?.scenarios?.length || 0) > 3 && (
+                    <div className="mt-3">
+                      <button onClick={() => setShowAllScenarios(true)} className="text-sm text-purple-700 hover:underline">
+                        Show all scenarios
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -528,7 +547,10 @@ export default function Home() {
                     User-centered tasks that represent realistic goals this MCP server can help accomplish.
                   </p>
                   <div className="space-y-4">
-                    {results.tests.find(t => t.name === 'High-Level User Tasks')?.details?.tasks?.map((task: any, idx: number) => (
+                    {(showAllTasks || !compact
+                      ? results.tests.find(t => t.name === 'High-Level User Tasks')?.details?.tasks
+                      : results.tests.find(t => t.name === 'High-Level User Tasks')?.details?.tasks?.slice(0, 3)
+                    )?.map((task: any, idx: number) => (
                       <div key={idx} className="bg-white p-4 rounded-lg border border-blue-100">
                         <div className="text-sm font-medium text-gray-900">{task.title}</div>
                         <div className="text-sm text-gray-600 mb-2">{task.description}</div>
@@ -538,6 +560,13 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                  {compact && (results.tests.find(t => t.name === 'High-Level User Tasks')?.details?.tasks?.length || 0) > 3 && (
+                    <div className="mt-3">
+                      <button onClick={() => setShowAllTasks(true)} className="text-sm text-blue-700 hover:underline">
+                        Show all tasks
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
