@@ -371,21 +371,81 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any) {
     
     // Check if this might be an OAuth requirement
     if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('authentication')) {
-      logger.log('🔐 Server likely requires OAuth authentication')
-      logger.log('💡 The CLI inspector can handle OAuth flows automatically')
-      logger.log('📖 For OAuth servers, use: npx @modelcontextprotocol/inspector --cli [SERVER_URL]')
-      
-      tests.push({
-        name: 'OAuth Authentication Required',
-        passed: true,
-        message: 'Server requires OAuth authentication - use CLI inspector directly for OAuth flow',
-        duration: Date.now() - test1Start,
-        details: {
-          requiresAuth: true,
-          cliCommand: `npx @modelcontextprotocol/inspector --cli ${serverUrl}`,
-          message: 'Use the CLI inspector directly for interactive OAuth authentication'
+      logger.log('🔐 Server requires OAuth authentication, setting up OAuth flow...')
+
+      try {
+        // Get base URL for OAuth redirects
+        const host = request.headers.get('host') || 'localhost:3000'
+        const protocol = host.includes('localhost') ? 'http' : 'https'
+        const baseUrl = `${protocol}://${host}`
+
+        // Step 1: Discover OAuth metadata
+        logger.log('📋 Discovering OAuth protected resource metadata...')
+        const resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl)
+
+        // Step 2: Discover authorization server metadata
+        const authServerUrl = resourceMetadata?.authorization_server || serverUrl
+        logger.log(`🔍 Discovering authorization server metadata from: ${authServerUrl}`)
+        const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
+        logger.log('✅ Auth server metadata discovered')
+
+        // Step 3: Define client metadata
+        const clientMetadata = {
+          client_name: 'MCP Eval Tool',
+          client_uri: baseUrl,
+          redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
+          grant_types: ['authorization_code'],
+          response_types: ['code'],
+          scope: 'openid'
         }
-      })
+
+        // Step 4: Register client dynamically
+        logger.log('📝 Registering OAuth client...')
+        const clientInformation = await registerClient(authServerUrl as string, {
+          metadata: authServerMetadata,
+          clientMetadata
+        })
+        logger.log('✅ Client registered successfully')
+
+        // Step 5: Start authorization flow
+        logger.log('🚀 Starting authorization flow...')
+        const authResult = await startAuthorization(authServerUrl as string, {
+          metadata: authServerMetadata,
+          clientInformation,
+          redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+          scope: 'openid',
+          resource: new URL(serverUrl)
+        })
+
+        logger.log('✅ OAuth flow setup complete')
+
+        tests.push({
+          name: 'OAuth Required',
+          passed: true,
+          message: 'Server requires OAuth authentication',
+          duration: Date.now() - test1Start,
+          details: {
+            requiresAuth: true,
+            oauthUrl: authResult.authorizationUrl.toString(),
+            clientInfo: clientInformation,
+            codeVerifier: authResult.codeVerifier,
+            message: 'OAuth authentication available'
+          }
+        })
+      } catch (oauthError) {
+        logger.log(`❌ OAuth setup failed: ${oauthError instanceof Error ? oauthError.message : 'Unknown error'}`)
+        tests.push({
+          name: 'OAuth Setup Failed',
+          passed: false,
+          message: `OAuth setup failed: ${oauthError instanceof Error ? oauthError.message : 'Unknown error'}`,
+          duration: Date.now() - test1Start,
+          details: {
+            requiresAuth: true,
+            cliCommand: `npx @modelcontextprotocol/inspector --cli ${serverUrl}`,
+            message: 'Use the CLI inspector directly for interactive OAuth authentication'
+          }
+        })
+      }
       
       return {
         serverUrl,
