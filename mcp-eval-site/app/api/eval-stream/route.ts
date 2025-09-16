@@ -47,7 +47,7 @@ async function setupOAuthFlowWithLogging(serverUrl: string, baseUrl: string, log
     
     // Step 4: Register client dynamically
     logger.log('📝 Registering OAuth client...')
-    const clientInformation = await registerClient(authServerUrl, {
+    const clientInformation = await registerClient(authServerUrl as string, {
       metadata: authServerMetadata,
       clientMetadata
     })
