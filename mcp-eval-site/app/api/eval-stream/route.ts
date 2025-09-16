@@ -32,7 +32,7 @@ async function setupOAuthFlowWithLogging(serverUrl: string, baseUrl: string, log
     // Step 2: Discover authorization server metadata
     const authServerUrl = resourceMetadata?.authorization_server || serverUrl
     logger.log(`🔍 Discovering authorization server metadata from: ${authServerUrl}`)
-    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl)
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
     logger.log('✅ Auth server metadata discovered')
     
     // Step 3: Define client metadata
