@@ -219,7 +219,13 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any) {
         '--transport', 'http',
         '--method', 'tools/list'
       ], {
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          HOME: '/tmp',
+          NPM_CONFIG_CACHE: '/tmp/.npm',
+          NPM_CONFIG_PREFIX: '/tmp/.npm-global'
+        }
       })
 
       let stdout = ''
