@@ -502,10 +502,13 @@ async function testMCPServerWithAuthentication(
       version: '1.0.0'
     })
 
+    // Create a simple auth provider with the access token
+    const authProvider = {
+      getAuthHeader: () => `Bearer ${tokens.access_token}`
+    }
+
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
-      headers: {
-        'Authorization': `Bearer ${tokens.access_token}`
-      }
+      authProvider
     })
 
     await mcpClient.connect(transport)
