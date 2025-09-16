@@ -515,9 +515,13 @@ async function testMCPServerWithAuthentication(
       },
       clientInformation: clientInfo,
       tokens: tokens,
+      codeVerifier: codeVerifier,
       getAuthHeader: () => `Bearer ${tokens.access_token}`,
       startAuthFlow: async () => { throw new Error('Auth flow already completed') },
-      finishAuthFlow: async () => { throw new Error('Auth flow already completed') }
+      finishAuthFlow: async () => { throw new Error('Auth flow already completed') },
+      saveTokens: async (tokens: any) => { /* Already have tokens */ },
+      redirectToAuthorization: (url: URL) => { throw new Error('Auth flow already completed') },
+      saveCodeVerifier: (verifier: string) => { /* Already have code verifier */ }
     }
 
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
