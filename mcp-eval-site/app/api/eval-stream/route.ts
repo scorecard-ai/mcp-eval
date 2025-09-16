@@ -540,8 +540,7 @@ async function testMCPServerWithAuthentication(
     // Step 3: Test tool discovery
     logger.log('🔍 Discovering tools with authentication...')
     const toolsListResult = await mcpClient.request(
-      { method: 'tools/list' },
-      { timeout: 30000 }
+      { method: 'tools/list' }
     )
 
     const toolCount = toolsListResult.tools?.length || 0
@@ -567,7 +566,7 @@ async function testMCPServerWithAuthentication(
             name: sampleTool.name,
             arguments: {}
           }
-        }, { timeout: 30000 })
+        })
 
         tests.push({
           name: 'Authenticated Tool Call',
@@ -595,8 +594,7 @@ async function testMCPServerWithAuthentication(
     logger.log('📚 Discovering resources with authentication...')
     try {
       const resourcesResult = await mcpClient.request(
-        { method: 'resources/list' },
-        { timeout: 30000 }
+        { method: 'resources/list' }
       )
 
       const resourceCount = resourcesResult.resources?.length || 0
