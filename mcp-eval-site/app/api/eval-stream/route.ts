@@ -201,6 +201,78 @@ Example format:
   }
 }
 
+// Generate example tasks for each discovered tool (LLM-backed with heuristics fallback)
+async function generateExampleTasksForTools(tools: any[]) {
+  if (!tools || tools.length === 0) return [] as any[]
+
+  const toolsSpec = tools.map((t: any) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: t.inputSchema || null
+  }))
+
+  const prompt = `You are generating concrete example tasks for an MCP server's tools.\n\nFor EACH tool below, create 1-2 short, practical tasks a user would ask for that involve that specific tool. For each task, also propose example arguments matching the tool's input schema (best-effort).\n\nTOOLS (JSON):\n${JSON.stringify(toolsSpec, null, 2)}\n\nReturn STRICT JSON with this exact shape (array):\n[\n  {\n    "tool": "<tool name>",\n    "tasks": [\n      { "title": "...", "description": "...", "exampleArguments": { } }\n    ]\n  }\n]\nInclude an entry for each tool in the same order. Do not include any extra text.`
+
+  try {
+    if (process.env.OPENAI_API_KEY) {
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-5-mini',
+          input: prompt,
+          max_output_tokens: 4000
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      let text: string | null = null
+      if (data.output && Array.isArray(data.output)) {
+        const msg = data.output.find((it: any) => it.type === 'message')
+        if (msg?.content && Array.isArray(msg.content)) {
+          const t = msg.content.find((c: any) => c.type === 'output_text')
+          text = t?.text || null
+        }
+      }
+      if (!text) throw new Error('Missing text content in Responses output')
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed)) return parsed
+      throw new Error('LLM output not an array')
+    }
+  } catch (e) {
+    console.error('Example task generation via LLM failed, using fallback:', e)
+  }
+
+  // Fallback: one smoke-test task per tool using generated arguments
+  const results: any[] = []
+  for (const tool of tools) {
+    const args = generateToolArguments(tool)
+    const toolName = tool.name || 'unknown_tool'
+    const desc = typeof tool.description === 'string' && tool.description.trim().length > 0
+      ? tool.description.trim()
+      : 'Perform the primary operation of this tool.'
+
+    results.push({
+      tool: toolName,
+      tasks: [
+        {
+          title: `Use ${toolName} (smoke test)`,
+          description: `Run a basic call of ${toolName}. ${desc}`,
+          exampleArguments: args
+        }
+      ]
+    })
+  }
+  return results
+}
+
 async function testMCPServerWithCLI(serverUrl: string, logger: any, request: NextRequest) {
   const tests: any[] = []
   const test1Start = Date.now()
@@ -268,6 +340,29 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
       duration: Date.now() - test1Start,
       details: { toolCount, tools: (toolsResult as any).tools }
     })
+
+    // Per-tool example tasks
+    try {
+      logger.log('🧪 Generating per-tool example tasks...')
+      const perTool = await generateExampleTasksForTools((toolsResult as any).tools || [])
+      tests.push({
+        name: 'Per-Tool Example Tasks',
+        passed: true,
+        message: `Generated example tasks for ${perTool.length} tools`,
+        duration: Date.now(),
+        details: { items: perTool }
+      })
+      logger.log(`✅ Generated per-tool tasks for ${perTool.length} tools`)
+    } catch (e) {
+      logger.log(`⚠️  Per-tool task generation failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      tests.push({
+        name: 'Per-Tool Example Tasks',
+        passed: false,
+        message: 'Failed to generate per-tool tasks',
+        duration: Date.now(),
+        details: { error: e instanceof Error ? e.message : String(e) }
+      })
+    }
 
     // Test 2: Generate scenarios
     logger.log('🧪 Generating test scenarios based on discovered tools...')
@@ -671,6 +766,29 @@ async function testMCPServerWithAuthentication(
       duration: Date.now(),
       details: { tools: toolsListResult.tools, toolCount }
     })
+
+    // Per-tool example tasks (authenticated)
+    try {
+      logger.log('🧪 Generating per-tool example tasks (authenticated)...')
+      const perTool = await generateExampleTasksForTools(toolsListResult.tools || [])
+      tests.push({
+        name: 'Per-Tool Example Tasks',
+        passed: true,
+        message: `Generated example tasks for ${perTool.length} tools`,
+        duration: Date.now(),
+        details: { items: perTool }
+      })
+      logger.log(`✅ Generated per-tool tasks for ${perTool.length} tools`)
+    } catch (e) {
+      logger.log(`⚠️  Per-tool task generation (authenticated) failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      tests.push({
+        name: 'Per-Tool Example Tasks',
+        passed: false,
+        message: 'Failed to generate per-tool tasks (authenticated)',
+        duration: Date.now(),
+        details: { error: e instanceof Error ? e.message : String(e) }
+      })
+    }
 
     // Step 4: Test multiple tools with intelligent arguments
     if (toolsListResult.tools && toolsListResult.tools.length > 0) {
