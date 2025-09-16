@@ -514,7 +514,7 @@ async function testMCPServerWithAuthentication(
         scope: 'openid'
       },
       clientInformation: clientInfo,
-      tokens: tokens,
+      tokens: () => tokens,
       codeVerifier: codeVerifier,
       getAuthHeader: () => `Bearer ${tokens.access_token}`,
       startAuthFlow: async () => { throw new Error('Auth flow already completed') },
