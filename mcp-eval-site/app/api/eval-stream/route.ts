@@ -417,7 +417,7 @@ export async function GET(request: NextRequest) {
         
         // For authenticated requests, we need to implement authenticated evaluation
         // For now, run the basic test but this should be enhanced with actual authentication
-        testMCPServerWithLogging(serverUrl, logger)
+        testMCPServerWithCLI(serverUrl, logger)
           .then((result) => {
             // Send final result
             const data = JSON.stringify({ type: 'result', result })
@@ -435,7 +435,7 @@ export async function GET(request: NextRequest) {
           })
       } else {
         // Regular unauthenticated evaluation
-        testMCPServerWithLogging(serverUrl, logger)
+        testMCPServerWithCLI(serverUrl, logger)
           .then((result) => {
             // Send final result
             const data = JSON.stringify({ type: 'result', result })
