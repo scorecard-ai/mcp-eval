@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Zap, TestTube } from 'lucide-react'
+import { Search, Zap, TestTube, ChevronRight, ChevronDown } from 'lucide-react'
 
 type TestResult = {
   name: string
@@ -48,6 +48,11 @@ export default function Home() {
   const [compact, setCompact] = useState(true)
   const [showAllScenarios, setShowAllScenarios] = useState(false)
   const [showAllTasks, setShowAllTasks] = useState(false)
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+
+  const toggleExpanded = (index: number) => {
+    setExpanded((prev) => ({ ...prev, [index]: !prev[index] }))
+  }
 
   // Handle OAuth callback
   useEffect(() => {
@@ -449,32 +454,53 @@ export default function Home() {
           </div>
 
           <div className="space-y-3">
-            {results.tests.map((test, index) => (
-              <div key={index} className="border-b border-gray-100 pb-3 last:border-b-0">
-                <div className="flex items-start gap-3">
-                  <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${
-                    test.passed ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
-                  <div className="flex-1">
-                    <h3 className="text-base text-blue-600 mb-0.5">
-                      {test.name}
-                    </h3>
-                    {!compact && (
-                      <>
-                        <p className="text-sm text-gray-600 leading-relaxed">
-                          {test.message}
-                        </p>
-                        {test.duration && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            {test.duration}ms
-                          </div>
+            {results.tests.map((test, index) => {
+              const isExpanded = !!expanded[index]
+              const showDetails = isExpanded || !compact
+              return (
+                <div key={index} className="border-b border-gray-100 pb-3 last:border-b-0">
+                  <button
+                    className="w-full text-left flex items-start gap-3 group"
+                    onClick={() => toggleExpanded(index)}
+                  >
+                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${
+                      test.passed ? 'bg-green-500' : 'bg-red-500'
+                    }`} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-gray-400" />
                         )}
-                      </>
-                    )}
-                  </div>
+                        <h3 className="text-base text-blue-600 mb-0.5 group-hover:underline">
+                          {test.name}
+                        </h3>
+                      </div>
+                      {showDetails && (
+                        <div className="mt-1">
+                          {test.message && (
+                            <p className="text-sm text-gray-600 leading-relaxed">
+                              {test.message}
+                            </p>
+                          )}
+                          {test.duration && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {test.duration}ms
+                            </div>
+                          )}
+                          {test.details && (
+                            <pre className="mt-2 text-xs bg-gray-50 border border-gray-200 rounded p-2 max-h-56 overflow-auto">
+{JSON.stringify(test.details, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </button>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Generated Test Scenarios */}
