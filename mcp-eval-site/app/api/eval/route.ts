@@ -236,10 +236,10 @@ Example format:
     
     if (data.output && Array.isArray(data.output)) {
       // Find the message output (not reasoning)
-      const messageOutput = data.output.find(item => item.type === 'message')
+      const messageOutput = data.output.find((item: any) => item.type === 'message')
       if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
         // Find the text content
-        const textContent = messageOutput.content.find(item => item.type === 'output_text')
+        const textContent = messageOutput.content.find((item: any) => item.type === 'output_text')
         if (textContent && textContent.text) {
           scenariosText = textContent.text
         }
