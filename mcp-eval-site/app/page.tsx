@@ -43,6 +43,7 @@ export default function Home() {
   const [autoResults, setAutoResults] = useState<AutoEvalResults | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [authRequired, setAuthRequired] = useState<any>(null)
+  const [statusMessage, setStatusMessage] = useState<string>('')
 
   // Handle OAuth callback
   useEffect(() => {
@@ -76,41 +77,73 @@ export default function Home() {
     if (!targetUrl) {
       setError('Server URL is required for authentication')
       setLoading(false)
+      setStatusMessage('')
       return
     }
     
+    // Retrieve stored OAuth state
+    const storedClientInfo = localStorage.getItem('mcp-eval-client-info')
+    const storedCodeVerifier = localStorage.getItem('mcp-eval-code-verifier')
+    
+    console.log('Retrieved OAuth state for callback:', {
+      clientInfo: !!storedClientInfo,
+      codeVerifier: !!storedCodeVerifier
+    })
+    
     try {
-      const response = await fetch('/api/eval', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          serverUrl: targetUrl,
-          authCode,
-          state
-        })
+      // Build query parameters for the authenticated streaming request
+      const params = new URLSearchParams({
+        serverUrl: targetUrl,
+        authCode,
+        ...(state && { state }),
+        ...(storedClientInfo && { clientInfo: storedClientInfo }),
+        ...(storedCodeVerifier && { codeVerifier: storedCodeVerifier })
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      // Use EventSource for Server-Sent Events to get real-time logs
+      const eventSource = new EventSource(`/api/eval-stream?${params.toString()}`)
+      
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        
+        if (data.type === 'log') {
+          setStatusMessage(data.message)
+        } else if (data.type === 'result') {
+          setResults(data.result)
+          setLoading(false)
+          setStatusMessage('')
+          setAuthRequired(null) // Clear auth required since we're now authenticated
+          eventSource.close()
+        } else if (data.type === 'error') {
+          setError(data.message)
+          setLoading(false)
+          setStatusMessage('')
+          eventSource.close()
+        }
       }
 
-      const data = await response.json()
-      console.log('Authenticated test results:', data)
+      eventSource.onerror = (error) => {
+        console.error('SSE Error:', error)
+        setError('Connection to server lost')
+        setLoading(false)
+        setStatusMessage('')
+        eventSource.close()
+      }
+
+      // Fallback timeout after 2 minutes
+      setTimeout(() => {
+        if (loading) {
+          eventSource.close()
+          setError('Request timed out')
+          setLoading(false)
+          setStatusMessage('')
+        }
+      }, 120000)
       
-      setResults({
-        serverUrl,
-        overallPassed: data.tests?.filter((t: TestResult) => t.passed).length || 0,
-        totalTests: data.tests?.length || 0,
-        tests: data.tests || [],
-        timestamp: new Date()
-      })
-      
-      // Clear auth required since we're now authenticated
-      setAuthRequired(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')
-    } finally {
       setLoading(false)
+      setStatusMessage('')
     }
   }
 
@@ -119,67 +152,83 @@ export default function Home() {
     setError(null)
     setResults(null)
     setAutoResults(null)
+    setStatusMessage('Starting evaluation...')
 
     try {
-      const response = await fetch('/api/eval', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serverUrl })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to run tests: ${response.statusText}`)
+      // Use EventSource for Server-Sent Events to get real-time logs
+      const eventSource = new EventSource(`/api/eval-stream?serverUrl=${encodeURIComponent(serverUrl)}`)
+      
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        
+        if (data.type === 'log') {
+          setStatusMessage(data.message)
+        } else if (data.type === 'result') {
+          setResults(data.result)
+          
+          // Check if any test requires OAuth
+          const oauthTest = data.result.tests?.find((test: any) => 
+            test.details?.requiresAuth && test.details?.oauthUrl
+          )
+          
+          if (oauthTest) {
+            setAuthRequired({
+              oauthUrl: oauthTest.details.oauthUrl,
+              clientInfo: oauthTest.details.clientInfo,
+              codeVerifier: oauthTest.details.codeVerifier
+            })
+          }
+          
+          setLoading(false)
+          setStatusMessage('')
+          eventSource.close()
+        } else if (data.type === 'error') {
+          setError(data.message)
+          setLoading(false)
+          setStatusMessage('')
+          eventSource.close()
+        }
       }
 
-      const data = await response.json()
-      
-      setResults(data)
-      
-      // Debug: log the test results to see the structure
-      console.log('Test results:', data.tests)
-      data.tests?.forEach((test: any, index: number) => {
-        console.log(`Test ${index} (${test.name}):`, test)
-        if (test.details) {
-          console.log(`  Details:`, test.details)
-        }
-      })
-      
-      // Check if OAuth is required from any test result - be more thorough
-      const authTest = data.tests?.find((t: any) => {
-        const hasAuth = t.details?.requiresAuth || 
-                       t.details?.authUrl || 
-                       t.details?.authorizationEndpoint ||
-                       t.name?.includes('OAuth') ||
-                       t.message?.includes('OAuth')
-        
-        if (hasAuth) {
-          console.log('Found auth test:', t.name, t.details)
-        }
-        
-        return hasAuth
-      })
-      
-      if (authTest) {
-        console.log('Auth required, setting details:', authTest.details)
-        setAuthRequired(authTest.details)
-      } else {
-        console.log('No auth required in any test')
-        setAuthRequired(null)
+      eventSource.onerror = (error) => {
+        console.error('SSE Error:', error)
+        setError('Connection to server lost')
+        setLoading(false)
+        setStatusMessage('')
+        eventSource.close()
       }
+
+      // Fallback timeout after 2 minutes
+      setTimeout(() => {
+        if (loading) {
+          eventSource.close()
+          setError('Request timed out')
+          setLoading(false)
+          setStatusMessage('')
+        }
+      }, 120000)
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
       setLoading(false)
+      setStatusMessage('')
     }
   }
 
   const handleOAuthFlow = () => {
-    if (authRequired?.authUrl) {
-      // Store serverUrl for after OAuth redirect
+    if (authRequired?.oauthUrl) {
+      // Store serverUrl and OAuth state for after OAuth redirect
       localStorage.setItem('mcp-eval-server-url', serverUrl)
+      localStorage.setItem('mcp-eval-client-info', JSON.stringify(authRequired.clientInfo))
+      localStorage.setItem('mcp-eval-code-verifier', authRequired.codeVerifier)
+      
+      console.log('Storing OAuth state for callback:', {
+        clientInfo: !!authRequired.clientInfo,
+        codeVerifier: !!authRequired.codeVerifier
+      })
       
       // Open OAuth authorization in the same window (like Claude.ai does)
-      window.location.href = authRequired.authUrl
+      window.location.href = authRequired.oauthUrl
     } else {
       console.error('No auth URL available:', authRequired)
       alert('OAuth URL not found. Please try running the test again.')
@@ -209,6 +258,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setLoading(false)
+      setStatusMessage('')
     }
   }
 
@@ -412,6 +462,54 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Generated Test Scenarios */}
+          {results?.tests?.find(t => t.name === 'Test Scenario Generation' && t.details?.scenarios) && (
+            <div className="mb-8 p-6 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-purple-900 mb-2">
+                    🧪 Generated Test Scenarios
+                  </h3>
+                  <p className="text-purple-800 mb-4">
+                    Based on the {results.tests.find(t => t.name === 'Authenticated Tool Discovery')?.details?.toolCount || 0} discovered tools, we've generated realistic test scenarios:
+                  </p>
+                  <div className="space-y-3">
+                    {results.tests.find(t => t.name === 'Test Scenario Generation')?.details?.scenarios?.map((scenario: any, index: number) => (
+                      <div key={index} className="bg-white p-4 rounded-lg border border-purple-100">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-medium text-gray-900">{scenario.title}</h4>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            scenario.complexity === 'simple' ? 'bg-green-100 text-green-800' :
+                            scenario.complexity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {scenario.complexity}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">{scenario.description}</p>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="bg-gray-100 px-2 py-1 rounded">{scenario.category}</span>
+                          <span>•</span>
+                          <span>{scenario.expectedTools?.length || 0} tools: {scenario.expectedTools?.join(', ') || 'None'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-purple-100 rounded-lg">
+                    <p className="text-sm text-purple-800">
+                      💡 <strong>Coming Soon:</strong> Run these scenarios with different LLMs (GPT-4o, Claude 3.5) to test tool compatibility and see which model works best with your MCP server!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* OAuth Authorization Card */}
           {authRequired && (
             <div className="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-lg">
@@ -523,7 +621,9 @@ export default function Home() {
         {loading && (
           <div className="text-center py-8">
             <div className="inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm text-gray-600">Testing MCP server...</p>
+            <p className="text-sm text-gray-600">
+              {statusMessage || 'Testing MCP server...'}
+            </p>
           </div>
         )}
 

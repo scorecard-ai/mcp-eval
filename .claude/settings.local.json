@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(npm run dev:*)",
+      "Bash(killall:*)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -2,224 +2,455 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
+import { 
+  UnauthorizedError,
+  startAuthorization,
+  exchangeAuthorization,
+  registerClient,
+  discoverOAuthProtectedResourceMetadata,
+  discoverAuthorizationServerMetadata
+} from '@modelcontextprotocol/sdk/client/auth.js'
 
-// OAuth flow implementation for MCP servers
-async function discoverOAuthEndpoints(serverUrl: string) {
-  try {
-    const wellKnownUrl = new URL('/.well-known/oauth-authorization-server', serverUrl)
-    const response = await fetch(wellKnownUrl.toString())
-    if (response.ok) {
-      return await response.json()
-    }
-  } catch (error) {
-    console.log('OAuth discovery failed:', error)
+// In-memory OAuth client provider based on the official MCP SDK example
+class InMemoryOAuthClientProvider {
+  private _clientInformation: any
+  private _tokens: any  
+  private _codeVerifier: string | undefined
+  private _redirectUrl: string
+  private _clientMetadata: any
+  private _onRedirect: (url: URL) => void
+
+  constructor(redirectUrl: string, clientMetadata: any, onRedirect?: (url: URL) => void) {
+    this._redirectUrl = redirectUrl
+    this._clientMetadata = clientMetadata
+    this._onRedirect = onRedirect || ((url) => {
+      console.log(`Redirect to: ${url.toString()}`)
+    })
   }
-  return null
+
+  get redirectUrl() {
+    return this._redirectUrl
+  }
+
+  get clientMetadata() {
+    return this._clientMetadata
+  }
+
+  clientInformation() {
+    // Return the dynamically registered client information
+    // This will be undefined initially, forcing dynamic registration
+    return this._clientInformation
+  }
+
+  saveClientInformation(clientInformation: any) {
+    // Still save it for completeness, but we use static info above
+    this._clientInformation = clientInformation
+  }
+
+  tokens() {
+    return this._tokens
+  }
+
+  saveTokens(tokens: any) {
+    this._tokens = tokens
+  }
+
+  redirectToAuthorization(authorizationUrl: URL) {
+    this._onRedirect(authorizationUrl)
+  }
+
+  saveCodeVerifier(codeVerifier: string) {
+    this._codeVerifier = codeVerifier
+  }
+
+  codeVerifier() {
+    if (!this._codeVerifier) {
+      throw new Error('No code verifier saved')
+    }
+    return this._codeVerifier
+  }
+
+  async validateResourceURL(serverUrl: string | URL) {
+    const url = new URL(serverUrl)
+    if (url.protocol === 'http:') url.protocol = 'https:'
+    return url
+  }
 }
 
-async function registerOAuthClient(registrationEndpoint: string, baseUrl: string) {
+// New function using lower-level OAuth functions for better web app support
+async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
+  console.log('🔍 Setting up OAuth flow using lower-level MCP SDK functions...')
+  
   try {
+    // Step 1: Discover OAuth metadata
+    console.log('📋 Discovering OAuth protected resource metadata...')
+    const resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl)
+    console.log('Resource metadata:', resourceMetadata)
     
-    const response = await fetch(registrationEndpoint, {
+    // Step 2: Discover authorization server metadata
+    const authServerUrl = resourceMetadata?.authorization_server || serverUrl
+    console.log('🔍 Discovering authorization server metadata from:', authServerUrl)
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl)
+    console.log('Auth server metadata:', authServerMetadata)
+    
+    // Step 3: Define client metadata
+    const clientMetadata = {
+      client_name: 'MCP Eval Tool',
+      redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
+      grant_types: ['authorization_code'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+      scope: 'openid'
+    }
+    
+    // Step 4: Register client dynamically
+    console.log('📝 Registering OAuth client...')
+    const clientInformation = await registerClient(authServerUrl, {
+      metadata: authServerMetadata,
+      clientMetadata
+    })
+    console.log('Client registered:', clientInformation)
+    
+    // Step 5: Start authorization flow
+    console.log('🚀 Starting authorization flow...')
+    const authResult = await startAuthorization(authServerUrl, {
+      metadata: authServerMetadata,
+      clientInformation,
+      redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
+      scope: 'openid',
+      resource: new URL(serverUrl)
+    })
+    
+    console.log('✅ OAuth flow setup complete')
+    return {
+      authorizationUrl: authResult.authorizationUrl.toString(),
+      codeVerifier: authResult.codeVerifier,
+      clientInformation,
+      authServerMetadata,
+      resourceMetadata
+    }
+    
+  } catch (error) {
+    console.error('❌ OAuth flow setup failed:', error)
+    throw error
+  }
+}
+
+// Function to exchange authorization code for access tokens
+async function performOAuthTokenExchange(serverUrl: string, authCode: string, clientInformation: any, codeVerifier: string, baseUrl: string) {
+  console.log('🔄 Exchanging authorization code for access tokens...')
+  
+  try {
+    // Discover OAuth metadata again (we need the auth server URL)
+    const resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl)
+    const authServerUrl = resourceMetadata?.authorization_server || serverUrl
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl)
+    
+    // Exchange the authorization code for tokens
+    const tokens = await exchangeAuthorization(authServerUrl, {
+      metadata: authServerMetadata,
+      clientInformation,
+      authorizationCode: authCode,
+      codeVerifier,
+      redirectUri: `${baseUrl}/api/mcp-auth-callback`,
+      resource: new URL(serverUrl)
+    })
+    
+    console.log('🎉 Token exchange successful!')
+    return tokens
+    
+  } catch (error) {
+    console.error('❌ OAuth token exchange failed:', error)
+    throw error
+  }
+}
+
+// Function to generate realistic test scenarios based on discovered tools
+async function generateTestScenarios(tools: any[]) {
+  console.log('🤖 Using LLM to analyze tools and generate realistic scenarios...')
+  
+  // Create a comprehensive prompt for scenario generation
+  const toolsDescription = tools.map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema
+  }))
+
+  const prompt = `You are an expert at analyzing MCP (Model Context Protocol) tools and generating realistic test scenarios.
+
+I have discovered ${tools.length} tools from an MCP server. Here are the tools with their descriptions and input schemas:
+
+${JSON.stringify(toolsDescription, null, 2)}
+
+Please analyze these tools and generate 1 realistic, practical test scenario that would:
+1. Test the most important/useful tools
+2. Use tools in realistic combinations/workflows  
+3. Represent real-world use cases
+4. Be clear enough for an LLM to understand and execute
+
+For each scenario, provide:
+- title: A clear, concise title
+- description: What the user is trying to accomplish  
+- expectedTools: Array of tool names that should be used
+- complexity: "simple", "medium", or "complex"
+- category: The type of task (e.g., "security", "analysis", "development")
+
+Return your response as a JSON array containing exactly 1 scenario.
+
+Example format:
+[
+  {
+    "title": "Security Analysis of Web Application", 
+    "description": "I need to scan my web application for security vulnerabilities and get a detailed report",
+    "expectedTools": ["security_scan", "generate_report"],
+    "complexity": "medium",
+    "category": "security"
+  }
+]`
+
+  try {
+    // Use OpenAI Responses API for GPT-5 Mini
+    const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        client_name: 'MCP Eval Tool',
-        client_uri: baseUrl,
-        redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-        token_endpoint_auth_method: 'none', // PKCE - no client secret
-        application_type: 'web',
-        scope: 'openid' // Request OpenID scope for basic auth
-      })
-    })
-    
-    if (response.ok) {
-      const registration = await response.json()
-      console.log('OAuth client registered:', registration.client_id)
-      return registration
-    } else {
-      console.log('Registration failed:', response.status, await response.text())
-    }
-  } catch (error) {
-    console.log('Client registration failed:', error)
-  }
-  return null
-}
-
-async function exchangeAuthCodeForToken(tokenEndpoint: string, authCode: string, clientId: string, baseUrl: string, codeVerifier?: string) {
-  try {
-    const response = await fetch(tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: authCode,
-        redirect_uri: `${baseUrl}/api/mcp-auth-callback`,
-        client_id: clientId,
-        code_verifier: codeVerifier || 'fallback_code_verifier_12345678901234567890123456789'
+        model: 'gpt-5-mini',
+        input: prompt,
+        max_output_tokens: 2000
       })
     })
 
-    if (response.ok) {
-      const tokenData = await response.json()
-      console.log('Token exchange successful:', tokenData)
-      return tokenData
-    } else {
+    if (!response.ok) {
       const errorText = await response.text()
-      console.error('Token exchange failed:', response.status, errorText)
-      return null
+      console.error('OpenAI API error response:', errorText)
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`)
     }
+
+    const data = await response.json()
+    
+    // Responses API returns content in data.output array, find the message with text
+    let scenariosText = null
+    
+    if (data.output && Array.isArray(data.output)) {
+      // Find the message output (not reasoning)
+      const messageOutput = data.output.find(item => item.type === 'message')
+      if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
+        // Find the text content
+        const textContent = messageOutput.content.find(item => item.type === 'output_text')
+        if (textContent && textContent.text) {
+          scenariosText = textContent.text
+        }
+      }
+    }
+    
+    if (!scenariosText) {
+      throw new Error('Unable to extract text content from OpenAI Responses API response')
+    }
+    
+    // Parse the JSON response with error handling
+    let scenarios
+    try {
+      scenarios = JSON.parse(scenariosText)
+    } catch (parseError) {
+      console.error('❌ JSON parsing failed, raw response:', scenariosText)
+      console.error('❌ Parse error:', parseError)
+      throw new Error(`Failed to parse OpenAI response as JSON: ${parseError.message}`)
+    }
+    
+    // Ensure we have an array and limit to 1 scenario if multiple returned
+    if (!Array.isArray(scenarios)) {
+      throw new Error('OpenAI response is not an array')
+    }
+    
+    // Take only the first scenario if multiple were returned
+    const limitedScenarios = scenarios.slice(0, 1)
+    
+    console.log(`🎉 SUCCESS! GPT-5 Mini generated ${scenarios.length} scenarios, using first ${limitedScenarios.length}`)
+    console.log(`🎯 First scenario title: "${limitedScenarios[0]?.title}"`)
+    return limitedScenarios
+
   } catch (error) {
-    console.error('Token exchange error:', error)
-    return null
+    console.error('❌ Failed to generate scenarios with LLM:', error)
+    
+    // Fallback: Generate basic scenarios based on tool names
+    const fallbackScenarios = generateFallbackScenarios(tools)
+    console.log(`🔄 Using ${fallbackScenarios.length} fallback scenarios`)
+    return fallbackScenarios
   }
 }
 
-async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, baseUrl: string, state?: string): Promise<TestResult[]> {
-  const tests: TestResult[] = []
+// Fallback scenario generation if LLM fails
+function generateFallbackScenarios(tools: any[]) {
+  const toolNames = tools.map(t => t.name.toLowerCase())
+  const scenarios = []
+
+  // Security-focused scenario
+  if (toolNames.some(name => name.includes('security') || name.includes('scan') || name.includes('vulnerability'))) {
+    scenarios.push({
+      title: "Security Assessment",
+      description: "Perform a comprehensive security analysis",
+      expectedTools: tools.filter(t => 
+        t.name.toLowerCase().includes('security') || 
+        t.name.toLowerCase().includes('scan') ||
+        t.name.toLowerCase().includes('vulnerability')
+      ).map(t => t.name).slice(0, 3),
+      complexity: "medium",
+      category: "security"
+    })
+  }
+
+  // Analysis scenario
+  if (toolNames.some(name => name.includes('analysis') || name.includes('report') || name.includes('analyze'))) {
+    scenarios.push({
+      title: "Comprehensive Analysis",
+      description: "Analyze and generate detailed reports",
+      expectedTools: tools.filter(t => 
+        t.name.toLowerCase().includes('analysis') || 
+        t.name.toLowerCase().includes('report') ||
+        t.name.toLowerCase().includes('analyze')
+      ).map(t => t.name).slice(0, 3),
+      complexity: "simple",
+      category: "analysis"  
+    })
+  }
+
+  // General workflow scenario
+  if (scenarios.length === 0) {
+    scenarios.push({
+      title: "Tool Discovery Test",
+      description: "Test the most commonly used tools from this MCP server",
+      expectedTools: tools.slice(0, 3).map(t => t.name),
+      complexity: "simple", 
+      category: "general"
+    })
+  }
+
+  return scenarios
+}
+
+// Helper function following the official MCP SDK pattern
+async function attemptConnection(
+  mcpClient: Client, 
+  oauthProvider: InMemoryOAuthClientProvider, 
+  serverUrl: string,
+  authCode?: string
+): Promise<void> {
+  console.log('🚢 Creating transport with OAuth provider...')
+  const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+    authProvider: oauthProvider
+  })
   
-  // Test 1: OAuth-based MCP Connection
-  const test1Start = Date.now()
+  try {
+    console.log('🔌 Attempting connection (this will trigger OAuth if needed)...')
+    await mcpClient.connect(transport)
+    console.log('✅ Connected successfully')
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      if (authCode) {
+        console.log('🔐 OAuth required - using provided authorization code...')
+        await transport.finishAuth(authCode)
+        console.log('🔐 Authorization completed, reconnecting...')
+        // Recursively attempt connection again
+        await attemptConnection(mcpClient, oauthProvider, serverUrl)
+      } else {
+        console.log('🔐 OAuth required - no auth code provided')
+        throw error
+      }
+    } else {
+      console.error('❌ Connection failed with non-auth error:', error)
+      throw error
+    }
+  }
+}
+
+async function testMCPServerWithOAuth(serverUrl: string, authCode: string, baseUrl: string, clientInfo?: any, storedCodeVerifier?: string): Promise<TestResult[]> {
+  const tests: TestResult[] = []
   let mcpClient: Client | null = null
   
   try {
-    // Extract client information from state parameter
-    let clientId = 'mcp-eval'
-    let codeVerifier = 'test_verifier'
+    console.log('🔗 Starting OAuth MCP connection test with auth code:', authCode.substring(0, 10) + '...')
     
-    if (state) {
-      try {
-        const stateData = JSON.parse(atob(state))
-        if (stateData.clientId) {
-          clientId = stateData.clientId
-        }
-        if (stateData.codeVerifier) {
-          codeVerifier = stateData.codeVerifier
-        }
-      } catch (error) {
-        console.log('Could not parse state for OAuth provider:', error)
-      }
+    if (!clientInfo || !storedCodeVerifier) {
+      throw new Error('Missing OAuth state: clientInfo and codeVerifier are required for token exchange')
     }
     
-    // Create OAuth provider with actual client information
-    const oauthProvider = {
-      redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
-      clientMetadata: {
-        client_name: 'MCP Eval Tool',
-        redirect_uris: [`${baseUrl}/api/mcp-auth-callback`],
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-        token_endpoint_auth_method: 'none',
-        scope: 'openid'
-      },
-      clientInformation() { 
-        // Return the actual client information that was used for authorization
-        return {
-          client_id: clientId,
-          client_secret: undefined // We use PKCE, no client secret
-        }
-      },
-      tokens() { return undefined },
-      saveTokens() {},
-      redirectToAuthorization() {},
-      saveCodeVerifier() {},
-      codeVerifier() { return codeVerifier },
-      state() { return 'test_state' },
-      // Add resource URL validation to handle protocol mismatches
-      async validateResourceURL(serverUrl: string | URL, resource?: string) {
-        // Always return the HTTPS version of the server URL to match expected URL
-        const url = new URL(serverUrl)
-        if (url.protocol === 'http:') {
-          url.protocol = 'https:'
-        }
-        return url
-      }
-    }
+    // Use lower-level OAuth functions for token exchange
+    const tokens = await performOAuthTokenExchange(serverUrl, authCode, clientInfo, storedCodeVerifier, baseUrl)
+    console.log('✅ OAuth token exchange successful')
 
-    // Create HTTP transport with OAuth provider
-    const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
-      authProvider: oauthProvider
-    })
-    
+    // Create MCP client with authenticated transport
     mcpClient = new Client({
       name: 'mcp-eval-client',
       version: '1.0.0'
-    }, { transport })
+    }, { capabilities: {} })
 
-    // Try to finish auth with the provided code
-    await transport.finishAuth(authCode)
-    await mcpClient.connect()
+    // Create transport with the access token
+    const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+      requestInit: {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`
+        }
+      }
+    })
+    
+    await mcpClient.connect(transport)
     
     tests.push({
       name: 'OAuth MCP Connection',
       passed: true,
-      message: 'Successfully connected to MCP server with OAuth authentication',
-      duration: Date.now() - test1Start
+      message: 'Successfully connected with OAuth authentication',
+      duration: Date.now()
     })
 
-    // Test 2: List Tools with Authentication
-    const test2Start = Date.now()
-    try {
-      const toolsResult = await mcpClient.listTools()
-      
-      tests.push({
-        name: 'Authenticated Tool Discovery',
-        passed: true,
-        message: `Successfully listed ${toolsResult.tools?.length || 0} tools`,
-        duration: Date.now() - test2Start,
-        details: {
-          toolCount: toolsResult.tools?.length || 0,
-          tools: toolsResult.tools?.map(tool => ({ name: tool.name, description: tool.description })) || []
-        }
-      })
-    } catch (toolError) {
-      tests.push({
-        name: 'Authenticated Tool Discovery',
-        passed: false,
-        message: `Failed to list tools: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`,
-        duration: Date.now() - test2Start
-      })
+    // Test authenticated operations
+    const toolsResult = await mcpClient.listTools()
+    tests.push({
+      name: 'Authenticated Tool Discovery',
+      passed: true,
+      message: `Found ${toolsResult?.tools?.length || 0} tools`,
+      duration: Date.now(),
+      details: {
+        toolCount: toolsResult?.tools?.length || 0,
+        toolNames: toolsResult?.tools?.map(t => t.name) || [],
+        tools: toolsResult?.tools || []
+      }
+    })
+
+    // Generate test scenarios based on discovered tools
+    if (toolsResult?.tools && toolsResult.tools.length > 0) {
+      console.log('🧪 Generating test scenarios based on discovered tools...')
+      try {
+        const scenarios = await generateTestScenarios(toolsResult.tools)
+        tests.push({
+          name: 'Test Scenario Generation',
+          passed: true,
+          message: `Generated ${scenarios.length} test scenarios`,
+          duration: Date.now(),
+          details: {
+            scenarios: scenarios,
+            toolCount: toolsResult.tools.length
+          }
+        })
+      } catch (scenarioError) {
+        console.error('❌ Scenario generation failed:', scenarioError)
+        tests.push({
+          name: 'Test Scenario Generation',
+          passed: false,
+          message: `Failed to generate scenarios: ${scenarioError instanceof Error ? scenarioError.message : 'Unknown error'}`,
+          duration: Date.now()
+        })
+      }
     }
 
-    // Test 3: List Resources with Authentication  
-    const test3Start = Date.now()
-    try {
-      const resourcesResult = await mcpClient.listResources()
-      
-      tests.push({
-        name: 'Authenticated Resource Discovery',
-        passed: true,
-        message: `Successfully listed ${resourcesResult.resources?.length || 0} resources`,
-        duration: Date.now() - test3Start,
-        details: {
-          resourceCount: resourcesResult.resources?.length || 0,
-          resources: resourcesResult.resources?.map(resource => ({ uri: resource.uri, name: resource.name })) || []
-        }
-      })
-    } catch (resourceError) {
-      tests.push({
-        name: 'Authenticated Resource Discovery',
-        passed: false,
-        message: `Failed to list resources: ${resourceError instanceof Error ? resourceError.message : 'Unknown error'}`,
-        duration: Date.now() - test3Start
-      })
-    }
-    
   } catch (error) {
     tests.push({
       name: 'OAuth MCP Connection',
       passed: false,
       message: `Failed to connect with OAuth: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      duration: Date.now() - test1Start
+      duration: Date.now()
     })
   } finally {
     if (mcpClient) {
@@ -230,7 +461,7 @@ async function testAuthenticatedMCPServer(serverUrl: string, authCode: string, b
       }
     }
   }
-  
+
   return tests
 }
 
@@ -248,243 +479,41 @@ type MCPTool = {
   inputSchema?: any
 }
 
-type GeneratedTask = {
-  id: string
-  title: string
-  description: string
-  expectedTools: string[]
-  testPrompt: string
-  successCriteria: string
-  difficulty: 'easy' | 'medium' | 'hard'
-}
-
-type EvalResult = {
-  taskId: string
-  model: string
-  success: boolean
-  toolsCalled: string[]
-  tokenCount: number
-  latency: number
-  reasoning: string
-  score: number
-  // Multi-dimensional scoring (1-5 scale)
-  dimensions: {
-    accuracy: number
-    completeness: number
-    relevance: number
-    clarity: number
-    reasoning: number
-  }
-}
-
 async function runAutoEvaluation(serverUrl: string) {
-  let client: Client | null = null
-  
-  try {
-    // Step 1: Connect to MCP server and discover real tools
-    let tools: MCPTool[] = []
-    
-    try {
-      // Create SSE transport for the MCP server
-      const transport = new SSEClientTransport(new URL(serverUrl))
-      client = new Client({
-        name: 'mcp-eval-client',
-        version: '1.0.0',
-      }, {
-        capabilities: {}
-      })
-      
-      // Connect to the server
-      await client.connect(transport)
-      
-      // List available tools
-      const toolsList = await client.listTools()
-      if (toolsList?.tools) {
-        tools = toolsList.tools.map(t => ({
-          name: t.name,
-          description: t.description || '',
-          inputSchema: t.inputSchema
-        }))
-      }
-    } catch (error) {
-      console.log('Failed to connect to MCP server, using mock tools:', error)
-      // Fallback to mock tools if connection fails
-      tools = serverUrl.includes('exa') ? [
-        { name: "web_search_exa", description: "Search the web using Exa AI" },
-        { name: "company_research_exa", description: "Research company information" },
-        { name: "crawling_exa", description: "Extract content from URLs" }
-      ] : [
-        { name: "example_tool", description: "Example MCP tool" }
-      ]
-    }
-
-    // Step 2: Generate diverse task categories (inspired by MCPBench)
-    const tasks: GeneratedTask[] = [
-      // Web Search Tasks
-      {
-        id: 'search-basic',
-        title: 'Simple Web Search',
-        description: 'Basic information retrieval',
-        expectedTools: ['web_search_exa'],
-        testPrompt: 'What are the latest developments in artificial intelligence?',
-        successCriteria: 'Returns current, relevant AI news and developments',
-        difficulty: 'easy'
-      },
-      // Database/CRUD Tasks
-      {
-        id: 'crud-complex',
-        title: 'Data Management',
-        description: 'Complex data operations',
-        expectedTools: ['company_research_exa', 'crawling_exa'],
-        testPrompt: 'Find information about OpenAI, then extract details from their latest blog post',
-        successCriteria: 'Successfully chains multiple tools for comprehensive data gathering',
-        difficulty: 'hard'
-      },
-      // Multi-step Workflow (GAIA-style)
-      {
-        id: 'workflow-multi',
-        title: 'Multi-Step Research',
-        description: 'Complex research workflow requiring tool coordination',
-        expectedTools: ['web_search_exa', 'company_research_exa'],
-        testPrompt: 'Research the top 3 AI companies, compare their latest products, and summarize key differences',
-        successCriteria: 'Completes multi-step analysis with accurate comparisons',
-        difficulty: 'hard'
-      },
-      // Stateful Conversation Test
-      {
-        id: 'state-management',
-        title: 'Context Retention',
-        description: 'Tests ability to maintain context across operations',
-        expectedTools: ['web_search_exa'],
-        testPrompt: 'Search for Tesla news. Now find more details about the first result.',
-        successCriteria: 'Maintains context and references previous results correctly',
-        difficulty: 'medium'
-      }
-    ]
-
-    // Step 3: Simulate testing with different models
-    const models = ['claude-3-5-sonnet', 'gpt-4o', 'gpt-4o-mini']
-    const results: EvalResult[] = []
-
-    for (const task of tasks) {
-      for (const model of models) {
-        const startTime = Date.now()
-        const success = Math.random() > 0.3 // 70% success rate
-        const score = success ? Math.floor(Math.random() * 40) + 60 : Math.floor(Math.random() * 40)
-        
-        // Calculate multi-dimensional scores (inspired by pymcpevals)
-        const dimensions = {
-          accuracy: success ? 3 + Math.random() * 2 : 1 + Math.random() * 2,
-          completeness: success ? 3 + Math.random() * 2 : 1 + Math.random() * 2,
-          relevance: success ? 4 + Math.random() : 2 + Math.random(),
-          clarity: 3 + Math.random() * 2,
-          reasoning: success ? 3 + Math.random() * 2 : 1 + Math.random() * 2
-        }
-        
-        results.push({
-          taskId: task.id,
-          model,
-          success,
-          toolsCalled: success ? task.expectedTools : [],
-          tokenCount: Math.floor(Math.random() * 500) + 200,
-          latency: Date.now() - startTime + Math.floor(Math.random() * 2000),
-          reasoning: success ? `Successfully used ${task.expectedTools.join(', ')}` : 'Failed to complete task',
-          score,
-          dimensions: {
-            accuracy: Math.round(dimensions.accuracy * 10) / 10,
-            completeness: Math.round(dimensions.completeness * 10) / 10,
-            relevance: Math.round(dimensions.relevance * 10) / 10,
-            clarity: Math.round(dimensions.clarity * 10) / 10,
-            reasoning: Math.round(dimensions.reasoning * 10) / 10
-          }
-        })
-      }
-    }
-
-    // Step 4: Calculate scorecard
-    const totalTests = results.length
-    const successRate = results.filter(r => r.success).length / totalTests
-    const avgLatency = results.reduce((sum, r) => sum + r.latency, 0) / totalTests
-    const avgTokens = results.reduce((sum, r) => sum + r.tokenCount, 0) / totalTests
-    const overallScore = results.reduce((sum, r) => sum + r.score, 0) / totalTests
-
-    // Clean up MCP client connection
-    if (client) {
-      try {
-        await client.close()
-      } catch (error) {
-        console.log('Error closing MCP client:', error)
-      }
-    }
-
-    return NextResponse.json({
-      type: 'auto-eval',
-      serverUrl,
-      timestamp: new Date(),
-      discoveredTools: tools,
-      generatedTasks: tasks,
-      results,
-      scorecard: {
-        overallScore: Math.round(overallScore),
-        totalTests,
-        successRate,
-        avgLatency: Math.round(avgLatency),
-        avgTokens: Math.round(avgTokens),
-        modelPerformance: models.map(model => {
-          const modelResults = results.filter(r => r.model === model)
-          return {
-            model,
-            score: Math.round(modelResults.reduce((sum, r) => sum + r.score, 0) / modelResults.length),
-            successRate: modelResults.filter(r => r.success).length / modelResults.length
-          }
-        }),
-        toolCoverage: tools.map(tool => ({
-          tool: tool.name,
-          timesUsed: results.filter(r => r.toolsCalled.includes(tool.name)).length,
-          successRate: 0.8 + Math.random() * 0.2
-        }))
-      }
-    })
-
-  } catch (error) {
-    // Clean up on error
-    if (client) {
-      try {
-        await client.close()
-      } catch (closeError) {
-        console.log('Error closing MCP client:', closeError)
-      }
-    }
-    return NextResponse.json({ error: 'Auto-evaluation failed' }, { status: 500 })
-  }
+  return NextResponse.json({ 
+    error: 'Auto-evaluation not implemented yet' 
+  }, { status: 501 })
 }
 
 export async function POST(request: NextRequest) {
-  const { serverUrl, autoEval = false, authCode, state } = await request.json()
-  
-  // Get the current host for OAuth redirects
-  const host = request.headers.get('host') || 'localhost:3000'
-  const protocol = host.includes('localhost') ? 'http' : 'https'
-  const baseUrl = `${protocol}://${host}`
+  try {
+    const { serverUrl, autoEval = false, authCode, state, clientInfo, codeVerifier } = await request.json()
+    
+    // Get the current host for OAuth redirects
+    const host = request.headers.get('host') || 'localhost:3000'
+    const protocol = host.includes('localhost') ? 'http' : 'https'
+    const baseUrl = `${protocol}://${host}`
 
-  if (!serverUrl) {
-    return NextResponse.json(
-      { error: 'Server URL is required' },
-      { status: 400 }
-    )
-  }
+    console.log('API request received:', { serverUrl, autoEval, authCode: !!authCode, baseUrl })
+
+    if (!serverUrl) {
+      return NextResponse.json(
+        { error: 'Server URL is required' },
+        { status: 400 }
+      )
+    }
 
   // If auto-eval is requested, run comprehensive evaluation
   if (autoEval) {
     return runAutoEvaluation(serverUrl)
   }
 
-  // If auth code is provided, use SDK OAuth to test authenticated MCP server
+  // If auth code is provided, use MCP SDK OAuth to test authenticated server
   if (authCode) {
     console.log('Processing OAuth callback with auth code:', authCode)
+    console.log('Using stored OAuth state - clientInfo:', !!clientInfo, 'codeVerifier:', !!codeVerifier)
     
-    // Use the MCP SDK OAuth to test the authenticated server
-    const authenticatedTests = await testAuthenticatedMCPServer(serverUrl, authCode, baseUrl, state)
+    const authenticatedTests = await testMCPServerWithOAuth(serverUrl, authCode, baseUrl, clientInfo, codeVerifier)
     
     return NextResponse.json({
       serverUrl,
@@ -497,7 +526,6 @@ export async function POST(request: NextRequest) {
   }
 
   const tests: TestResult[] = []
-  const startTime = Date.now()
 
   // Test 1: Server Reachability
   const test1Start = Date.now()
@@ -510,17 +538,17 @@ export async function POST(request: NextRequest) {
       }
     })
     
-    // More lenient for MCP servers - many return 404 for GET but work with proper MCP protocol
     const isReachable = response.status !== 0 && response.status < 500
     
     tests.push({
       name: 'Server Reachability',
       passed: isReachable,
-      message: `Server responded with status ${response.status} (${response.statusText})`,
+      message: isReachable ? 
+        `Server responded with status ${response.status}` :
+        `Server unreachable (status ${response.status})`,
       duration: Date.now() - test1Start,
       details: {
         status: response.status,
-        statusText: response.statusText,
         headers: Object.fromEntries(response.headers.entries())
       }
     })
@@ -528,20 +556,19 @@ export async function POST(request: NextRequest) {
     tests.push({
       name: 'Server Reachability',
       passed: false,
-      message: `Failed to reach server: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Connection failed: ${error instanceof Error ? error.message : 'Network error'}`,
       duration: Date.now() - test1Start
     })
   }
 
-  // Test 2: MCP Protocol Check
+  // Test 2: MCP Protocol Support  
   const test2Start = Date.now()
   try {
-    // Try to send an MCP initialization request
     const response = await fetch(serverUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -582,170 +609,103 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Test 3: OAuth Discovery & Authentication Check
+  // Test 3: MCP Connection with OAuth Support using lower-level SDK functions
   const test3Start = Date.now()
+
   try {
-    // First, try to discover OAuth endpoints
-    const oauthConfig = await discoverOAuthEndpoints(serverUrl)
-    
-    // For scorecard.io specifically, we know the endpoints
-    const isScorecard = serverUrl.includes('scorecard.io')
-    const knownOAuthConfig = isScorecard ? {
-      authorization_endpoint: 'https://app.scorecard.io/oauth/authorize',
-      token_endpoint: 'https://app.scorecard.io/oauth/token',
-      registration_endpoint: 'https://app.scorecard.io/oauth/register'
-    } : null
-    
-    const finalOAuthConfig = oauthConfig || knownOAuthConfig
-    
-    if (finalOAuthConfig) {
-      // Server supports OAuth
-      const hasRequiredEndpoints = finalOAuthConfig.authorization_endpoint && finalOAuthConfig.token_endpoint
+    // First try direct connection without auth
+    const mcpClient = new Client({
+      name: 'mcp-eval-client',
+      version: '1.0.0'
+    }, { capabilities: {} })
+
+    try {
+      const transport = new StreamableHTTPClientTransport(new URL(serverUrl))
+      await mcpClient.connect(transport)
       
-      if (hasRequiredEndpoints && finalOAuthConfig.registration_endpoint) {
-        // Try to register as an OAuth client
-        const clientRegistration = await registerOAuthClient(finalOAuthConfig.registration_endpoint, baseUrl)
+      const tools = await mcpClient.listTools()
+      tests.push({
+        name: 'MCP Connection',
+        passed: true,
+        message: `Connected successfully without authentication. Found ${tools?.tools?.length || 0} tools`,
+        duration: Date.now() - test3Start,
+        details: {
+          toolCount: tools?.tools?.length || 0,
+          toolNames: tools?.tools?.map(t => t.name) || []
+        }
+      })
+      
+      await mcpClient.close()
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const isUnauthorized = error instanceof UnauthorizedError || 
+                            errorMessage.includes('401') || 
+                            errorMessage.includes('Unauthorized')
+      
+      if (isUnauthorized) {
+        console.log('🔐 OAuth required (detected 401/Unauthorized), setting up authorization flow...')
         
-        if (clientRegistration && clientRegistration.client_id) {
-          // Generate proper PKCE code verifier (43+ characters)
-          const codeVerifier = btoa(Math.random().toString() + Math.random().toString()).substring(0, 50)
-          
-          // Generate S256 code challenge
-          const encoder = new TextEncoder()
-          const data = encoder.encode(codeVerifier)
-          const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-          const hashArray = Array.from(new Uint8Array(hashBuffer))
-          const codeChallenge = btoa(String.fromCharCode.apply(null, hashArray))
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=/g, '')
-          
-          // Encode client ID and code verifier in state parameter for token exchange
-          const stateData = {
-            timestamp: Date.now(),
-            clientId: clientRegistration.client_id,
-            codeVerifier
-          }
-          const encodedState = btoa(JSON.stringify(stateData))
-          
-          const authUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=${clientRegistration.client_id}&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}&code_challenge=${codeChallenge}&code_challenge_method=S256`
+        try {
+          // Use lower-level OAuth functions for better control
+          const oauthResult = await setupOAuthFlow(serverUrl, baseUrl)
           
           tests.push({
-            name: 'OAuth Setup',
+            name: 'OAuth Required',
             passed: true,
-            message: 'OAuth client registered successfully. Ready for authentication.',
+            message: 'Server requires OAuth authentication',
             duration: Date.now() - test3Start,
             details: {
               requiresAuth: true,
-              clientId: clientRegistration.client_id,
-              authorizationEndpoint: finalOAuthConfig.authorization_endpoint,
-              tokenEndpoint: finalOAuthConfig.token_endpoint,
-              registrationEndpoint: finalOAuthConfig.registration_endpoint,
-              authUrl
+              oauthUrl: oauthResult.authorizationUrl,
+              clientInfo: oauthResult.clientInformation,
+              codeVerifier: oauthResult.codeVerifier,
+              message: 'OAuth authentication available'
             }
           })
-        } else {
-          // Fallback: provide manual auth URL even if registration failed
-          const codeVerifier = btoa(Math.random().toString()).substring(0, 50)
-          const codeChallenge = codeVerifier
-          
-          const stateData = {
-            timestamp: Date.now(),
-            clientId: 'mcp-eval',
-            codeVerifier
-          }
-          const encodedState = btoa(JSON.stringify(stateData))
-          
-          const manualAuthUrl = `${finalOAuthConfig.authorization_endpoint}?response_type=code&client_id=mcp-eval&redirect_uri=${encodeURIComponent(`${baseUrl}/api/mcp-auth-callback`)}&state=${encodedState}&code_challenge=${codeChallenge}&code_challenge_method=plain`
-          
+        } catch (oauthError) {
+          console.error('❌ OAuth setup failed:', oauthError)
           tests.push({
-            name: 'OAuth Setup',
-            passed: true,
-            message: 'OAuth endpoints found. Manual authorization required.',
+            name: 'OAuth Setup Failed',
+            passed: false,
+            message: `OAuth setup failed: ${oauthError instanceof Error ? oauthError.message : 'Unknown error'}`,
             duration: Date.now() - test3Start,
             details: {
               requiresAuth: true,
-              registrationFailed: true,
-              authorizationEndpoint: finalOAuthConfig.authorization_endpoint,
-              tokenEndpoint: finalOAuthConfig.token_endpoint,
-              authUrl: manualAuthUrl
+              error: oauthError instanceof Error ? oauthError.message : 'Unknown error'
             }
           })
         }
       } else {
-        tests.push({
-          name: 'OAuth Discovery',
-          passed: false,
-          message: 'OAuth configuration incomplete',
-          duration: Date.now() - test3Start,
-          details: oauthConfig
-        })
-      }
-    } else {
-      // Try direct MCP connection for non-OAuth servers
-      let mcpClient: Client | null = null
-      try {
-        const transport = new SSEClientTransport(new URL(serverUrl))
-        mcpClient = new Client({
-          name: 'mcp-eval-client',
-          version: '1.0.0',
-        }, {
-          capabilities: {}
-        })
-        
-        await mcpClient.connect(transport)
-        const tools = await mcpClient.listTools()
-        
-        tests.push({
-          name: 'MCP Client Connection',
-          passed: true,
-          message: `Connected successfully. Found ${tools?.tools?.length || 0} tools`,
-          duration: Date.now() - test3Start,
-          details: {
-            toolCount: tools?.tools?.length || 0,
-            toolNames: tools?.tools?.map(t => t.name) || []
-          }
-        })
-        
-        await mcpClient.close()
-      } catch (error) {
-        tests.push({
-          name: 'MCP Client Connection', 
-          passed: false,
-          message: `Direct connection failed: ${error instanceof Error ? error.message : 'Unknown error'}. Server may require OAuth.`,
-          duration: Date.now() - test3Start
-        })
-        
-        if (mcpClient) {
-          try {
-            await mcpClient.close()
-          } catch (closeError) {
-            console.log('Error closing client:', closeError)
-          }
-        }
+        throw error
       }
     }
   } catch (error) {
     tests.push({
-      name: 'OAuth Discovery',
+      name: 'MCP Connection',
       passed: false,
-      message: `Discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       duration: Date.now() - test3Start
     })
   }
 
-  const overallPassed = tests.filter(t => t.passed).length
-
+  const requiresAuthTest = tests.find(t => t.details?.requiresAuth)
+  
   return NextResponse.json({
     serverUrl,
-    overallPassed,
+    overallPassed: tests.filter(t => t.passed).length,
     totalTests: tests.length,
     tests,
-    timestamp: new Date(),
-    summary: {
-      isReachable: tests[0]?.passed || false,
-      supportsMCP: tests[1]?.passed || false,
-      hasAuth: tests[2]?.details?.hasApiKey || false
-    }
+    timestamp: new Date().toISOString(),
+    requiresAuth: tests.some(t => t.details?.requiresAuth),
+    oauthUrl: requiresAuthTest?.details?.oauthUrl || null
   })
+  
+  } catch (error) {
+    console.error('❌ API route error:', error)
+    return NextResponse.json({
+      error: `API error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      timestamp: new Date().toISOString()
+    }, { status: 500 })
+  }
 }
