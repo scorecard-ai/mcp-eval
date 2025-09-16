@@ -6,7 +6,8 @@ import {
   discoverOAuthProtectedResourceMetadata,
   discoverAuthorizationServerMetadata,
   registerClient,
-  startAuthorization
+  startAuthorization,
+  exchangeAuthorization
 } from '@modelcontextprotocol/sdk/client/auth.js'
 
 // Custom console.log that sends messages to SSE stream
@@ -460,6 +461,165 @@ async function testMCPServerWithCLI(serverUrl: string, logger: any, request: Nex
   }
 }
 
+async function testMCPServerWithAuthentication(
+  serverUrl: string,
+  authCode: string,
+  clientInfo: any,
+  codeVerifier: string,
+  logger: any,
+  request: NextRequest
+) {
+  const tests: any[] = []
+  logger.log('🔐 Starting authenticated MCP server evaluation...')
+
+  try {
+    // Get base URL for OAuth
+    const host = request.headers.get('host') || 'localhost:3000'
+    const protocol = host.includes('localhost') ? 'http' : 'https'
+    const baseUrl = `${protocol}://${host}`
+
+    // Step 1: Exchange authorization code for tokens
+    logger.log('🔄 Exchanging authorization code for access tokens...')
+
+    const resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl)
+    const authServerUrl = resourceMetadata?.authorization_server || serverUrl
+    const authServerMetadata = await discoverAuthorizationServerMetadata(authServerUrl as string)
+
+    const tokens = await exchangeAuthorization(authServerUrl as string, {
+      metadata: authServerMetadata,
+      clientInformation: clientInfo,
+      authorizationCode: authCode,
+      codeVerifier,
+      redirectUrl: `${baseUrl}/api/mcp-auth-callback`
+    })
+
+    logger.log('✅ OAuth token exchange successful')
+
+    // Step 2: Create authenticated MCP client
+    logger.log('🔌 Creating authenticated MCP client...')
+    const mcpClient = new Client({
+      name: 'mcp-eval-tool',
+      version: '1.0.0'
+    })
+
+    const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+      headers: {
+        'Authorization': `Bearer ${tokens.access_token}`
+      }
+    })
+
+    await mcpClient.connect(transport)
+
+    tests.push({
+      name: 'Authenticated MCP Connection',
+      passed: true,
+      message: 'Successfully connected with OAuth authentication',
+      duration: Date.now()
+    })
+
+    // Step 3: Test tool discovery
+    logger.log('🔍 Discovering tools with authentication...')
+    const toolsListResult = await mcpClient.request(
+      { method: 'tools/list' },
+      { timeout: 30000 }
+    )
+
+    const toolCount = toolsListResult.tools?.length || 0
+    logger.log(`✅ Discovered ${toolCount} tools`)
+
+    tests.push({
+      name: 'Authenticated Tool Discovery',
+      passed: true,
+      message: `Discovered ${toolCount} tools`,
+      duration: Date.now(),
+      details: { tools: toolsListResult.tools, toolCount }
+    })
+
+    // Step 4: Test calling a tool if available
+    if (toolsListResult.tools && toolsListResult.tools.length > 0) {
+      const sampleTool = toolsListResult.tools[0]
+      logger.log(`🧪 Testing tool call: ${sampleTool.name}`)
+
+      try {
+        const callResult = await mcpClient.request({
+          method: 'tools/call',
+          params: {
+            name: sampleTool.name,
+            arguments: {}
+          }
+        }, { timeout: 30000 })
+
+        tests.push({
+          name: 'Authenticated Tool Call',
+          passed: true,
+          message: `Successfully called tool "${sampleTool.name}"`,
+          duration: Date.now(),
+          details: { toolName: sampleTool.name, result: callResult }
+        })
+
+        logger.log(`✅ Tool call successful: ${sampleTool.name}`)
+      } catch (toolError) {
+        tests.push({
+          name: 'Authenticated Tool Call',
+          passed: false,
+          message: `Tool call failed: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`,
+          duration: Date.now(),
+          details: { toolName: sampleTool.name }
+        })
+
+        logger.log(`❌ Tool call failed: ${toolError instanceof Error ? toolError.message : 'Unknown error'}`)
+      }
+    }
+
+    // Step 5: Test resource discovery
+    logger.log('📚 Discovering resources with authentication...')
+    try {
+      const resourcesResult = await mcpClient.request(
+        { method: 'resources/list' },
+        { timeout: 30000 }
+      )
+
+      const resourceCount = resourcesResult.resources?.length || 0
+      logger.log(`✅ Discovered ${resourceCount} resources`)
+
+      tests.push({
+        name: 'Authenticated Resource Discovery',
+        passed: true,
+        message: `Discovered ${resourceCount} resources`,
+        duration: Date.now(),
+        details: { resources: resourcesResult.resources, resourceCount }
+      })
+    } catch (resourceError) {
+      tests.push({
+        name: 'Authenticated Resource Discovery',
+        passed: false,
+        message: `Resource discovery failed: ${resourceError instanceof Error ? resourceError.message : 'Unknown error'}`,
+        duration: Date.now()
+      })
+    }
+
+    await mcpClient.close()
+
+  } catch (error) {
+    logger.log(`❌ Authenticated evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+
+    tests.push({
+      name: 'OAuth Authentication',
+      passed: false,
+      message: `Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      duration: Date.now()
+    })
+  }
+
+  return {
+    serverUrl,
+    overallPassed: tests.filter(t => t.passed).length,
+    totalTests: tests.length,
+    tests,
+    timestamp: new Date()
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const serverUrl = searchParams.get('serverUrl')
@@ -479,11 +639,25 @@ export async function GET(request: NextRequest) {
       
       // Check if this is an authenticated request
       if (authCode && clientInfo && codeVerifier) {
-        logger.log('🔐 Running authenticated evaluation...')
-        
-        // For authenticated requests, we need to implement authenticated evaluation
-        // For now, run the basic test but this should be enhanced with actual authentication
-        testMCPServerWithCLI(serverUrl, logger, request)
+        logger.log('🔐 Running authenticated evaluation with OAuth tokens...')
+
+        // Parse the stored client info
+        let parsedClientInfo
+        try {
+          parsedClientInfo = JSON.parse(clientInfo)
+        } catch (e) {
+          logger.log('❌ Failed to parse client info')
+          const data = JSON.stringify({
+            type: 'error',
+            message: 'Failed to parse OAuth client information'
+          })
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+          controller.close()
+          return
+        }
+
+        // Run authenticated MCP evaluation
+        testMCPServerWithAuthentication(serverUrl, authCode, parsedClientInfo, codeVerifier, logger, request)
           .then((result) => {
             // Send final result
             const data = JSON.stringify({ type: 'result', result })
@@ -492,9 +666,9 @@ export async function GET(request: NextRequest) {
           })
           .catch((error) => {
             // Send error
-            const data = JSON.stringify({ 
-              type: 'error', 
-              message: error instanceof Error ? error.message : 'Unknown error' 
+            const data = JSON.stringify({
+              type: 'error',
+              message: error instanceof Error ? error.message : 'Unknown error'
             })
             controller.enqueue(encoder.encode(`data: ${data}\n\n`))
             controller.close()

@@ -597,14 +597,6 @@ export default function Home() {
           <button
             onClick={runTests}
             disabled={loading || !serverUrl}
-            className="px-6 py-2 text-sm text-gray-700 bg-gray-50 border border-gray-300 rounded hover:shadow-sm hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-          >
-            <TestTube className="w-4 h-4" />
-            {loading ? 'Testing...' : 'Basic Test'}
-          </button>
-          <button
-            onClick={runAutoEval}
-            disabled={loading || !serverUrl}
             className="px-6 py-2 text-sm text-white bg-gradient-to-r from-blue-500 to-purple-600 rounded hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
           >
             <Zap className="w-4 h-4" />
