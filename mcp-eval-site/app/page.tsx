@@ -12,6 +12,7 @@ export default function Home() {
     { name: "Scorecard", url: "https://mcp.scorecard.io/mcp" },
     { name: "Sentry", url: "https://mcp.sentry.dev/mcp" },
     { name: "Linear", url: "https://mcp.linear.app/mcp" },
+    { name: "Notion", url: "https://mcp.notion.com/mcp" },
   ];
 
   function handleEvaluate() {

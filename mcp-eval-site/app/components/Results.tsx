@@ -1,8 +1,9 @@
 "use client";
 
 import { Search, PlayCircle, AlertTriangle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EvaluationResult } from "@/app/types/mcp-eval";
+import TestDetails from "./TestDetails";
 
 interface ResultsProps {
   results: EvaluationResult;
@@ -32,16 +33,82 @@ export default function Results({
     description: string;
     arguments: any;
   } | null>(null);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const hasExecutableTools = results.tests.some(
     (test) => test.details?.requiresPermission
   );
 
+  useEffect(() => {
+    setOpenSections({});
+  }, [results.serverUrl, results.timestamp]);
+
+  useEffect(() => {
+    setOpenSections((prev) => {
+      const nextState: Record<string, boolean> = { ...prev };
+
+      results.tests.forEach((test) => {
+        const executionResult = toolResults.get(test.name);
+        const requiresPermission = Boolean(test.details?.requiresPermission);
+        const hasExecuted =
+          !requiresPermission ||
+          Boolean(test.details?.executed) ||
+          Boolean(executionResult);
+
+        const success = executionResult
+          ? Boolean(executionResult.success)
+          : Boolean(test.passed);
+
+        if (!(test.name in nextState)) {
+          nextState[test.name] = hasExecuted ? !success : false;
+        }
+
+        if (hasExecuted && success) {
+          nextState[test.name] = false;
+        }
+      });
+
+      return nextState;
+    });
+  }, [results.tests, toolResults]);
+
   const scorecard = useMemo(() => {
-    const passedTests = results.tests.filter((test) => test.passed).length;
-    const totalTests = results.tests.length;
+    const executedToolEntries = Array.from(toolResults.entries());
+    const executedToolNames = new Set(
+      executedToolEntries.map(([name]) => name)
+    );
+
+    let executedCount = 0;
+    let passedCount = 0;
+
+    results.tests.forEach((test) => {
+      const requiresPermission = Boolean(test.details?.requiresPermission);
+      const executionResult = toolResults.get(test.name);
+      const executed =
+        !requiresPermission ||
+        Boolean(test.details?.executed) ||
+        executedToolNames.has(test.name);
+
+      if (!executed) {
+        return;
+      }
+
+      executedCount += 1;
+
+      const passed = executionResult
+        ? Boolean(executionResult.success)
+        : Boolean(test.passed);
+
+      if (passed) {
+        passedCount += 1;
+      }
+    });
+
+    const pendingCount = results.tests.length - executedCount;
     const passRate =
-      totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+      executedCount > 0
+        ? Math.round((passedCount / executedCount) * 100)
+        : null;
 
     const timestamp = new Date(results.timestamp);
     const testedAt = Number.isNaN(timestamp.getTime())
@@ -132,12 +199,14 @@ export default function Results({
         detail: resourceDetail,
       },
       tests: {
-        passed: passedTests,
-        total: totalTests,
+        passed: passedCount,
+        executed: executedCount,
+        pending: pendingCount,
+        total: results.tests.length,
         passRate,
       },
     };
-  }, [results]);
+  }, [results, toolResults]);
 
   async function executeToolWithPermission(test: any) {
     const { toolName, sampleArguments } = test.details;
@@ -181,8 +250,10 @@ export default function Results({
             formattedError: true,
           })
         );
+        setOpenSections((prev) => ({ ...prev, [testName]: true }));
       } else {
         setToolResults((prev) => new Map(prev).set(testName, result));
+        setOpenSections((prev) => ({ ...prev, [testName]: false }));
       }
     } catch (error) {
       setToolResults((prev) =>
@@ -191,6 +262,7 @@ export default function Results({
           error: error instanceof Error ? error.message : "Execution failed",
         })
       );
+      setOpenSections((prev) => ({ ...prev, [testName]: true }));
     } finally {
       setExecutingTools((prev) => {
         const newSet = new Set(prev);
@@ -355,14 +427,21 @@ export default function Results({
                     Pass Rate
                   </p>
                   <p className="text-4xl font-semibold leading-none">
-                    {scorecard.tests.passRate}%
+                    {scorecard.tests.passRate !== null
+                      ? `${scorecard.tests.passRate}%`
+                      : "—"}
                   </p>
                 </div>
                 <div className="text-sm text-blue-100">
                   <p className="text-lg font-semibold text-white">
-                    {scorecard.tests.passed} / {scorecard.tests.total}
+                    {scorecard.tests.passed} / {scorecard.tests.executed}
                   </p>
                   <p>tests passed</p>
+                  {scorecard.tests.pending > 0 && (
+                    <p className="text-xs text-blue-100/80 mt-1">
+                      {scorecard.tests.pending} pending
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -470,99 +549,48 @@ export default function Results({
         <div className="space-y-3">
           {results.tests.map((test, index) => {
             const executionResult = toolResults.get(test.name);
-            const statusClass = executionResult?.success
-              ? "bg-green-500"
-              : test.passed
-              ? "bg-green-500"
-              : "bg-red-500";
+            const requiresPermission = Boolean(
+              test.details?.requiresPermission
+            );
+            const hasExecutedResult = Boolean(executionResult);
+            const wasExecuted =
+              !requiresPermission ||
+              Boolean(test.details?.executed) ||
+              hasExecutedResult;
+
+            let statusClass = "bg-gray-300";
+
+            if (hasExecutedResult) {
+              statusClass = executionResult?.success
+                ? "bg-green-500"
+                : "bg-red-500";
+            } else if (!requiresPermission || wasExecuted) {
+              statusClass = test.passed ? "bg-green-500" : "bg-red-500";
+            }
+
+            const hasBeenExecuted =
+              hasExecutedResult ||
+              !requiresPermission ||
+              Boolean(test.details?.executed);
+            const success = executionResult
+              ? Boolean(executionResult.success)
+              : Boolean(test.passed);
+            const computedDefaultOpen = hasBeenExecuted ? !success : false;
+            const isOpen = openSections[test.name] ?? computedDefaultOpen;
+
             return (
-              <details
+              <TestDetails
                 key={index}
-                className="border-b border-gray-100 pb-3 last:border-b-0"
-                open={true}
-              >
-                <summary className="cursor-pointer flex items-start gap-3 group list-none">
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${statusClass}`}
-                  />
-                  <h3 className="text-base text-blue-600 mb-0.5 group-hover:underline select-none">
-                    {test.name}
-                  </h3>
-                </summary>
-                <div className="mt-2 ml-5">
-                  {test.message && (
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      {test.message}
-                    </p>
-                  )}
-                  {test.details && (
-                    <>
-                      {test.details.requiresPermission &&
-                        !test.details.executed && (
-                          <div className="mt-3">
-                            <button
-                              onClick={() => executeToolWithPermission(test)}
-                              disabled={executingTools.has(test.name)}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {executingTools.has(test.name) ? (
-                                <>
-                                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                  Executing...
-                                </>
-                              ) : (
-                                <>
-                                  <PlayCircle className="w-4 h-4" />
-                                  Execute Tool
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-
-                      {toolResults.has(test.name) && (
-                        <div
-                          className={`mt-3 p-3 border rounded ${
-                            toolResults.get(test.name)?.success
-                              ? "bg-green-50 border-green-200"
-                              : "bg-red-50 border-red-200"
-                          }`}
-                        >
-                          <p
-                            className={`text-xs font-semibold mb-1 ${
-                              toolResults.get(test.name)?.success
-                                ? "text-green-700"
-                                : "text-red-700"
-                            }`}
-                          >
-                            {toolResults.get(test.name)?.success
-                              ? "✅ Execution Successful"
-                              : "❌ Execution Failed"}
-                          </p>
-                          {toolResults.get(test.name)?.error && (
-                            <div className="text-xs text-red-600 mb-2">
-                              Error: {toolResults.get(test.name).error}
-                            </div>
-                          )}
-                          <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-auto max-h-32">
-                            {JSON.stringify(
-                              toolResults.get(test.name)?.result ||
-                                toolResults.get(test.name)?.details ||
-                                toolResults.get(test.name),
-                              null,
-                              2
-                            )}
-                          </pre>
-                        </div>
-                      )}
-
-                      <pre className="mt-2 text-xs bg-gray-50 border border-gray-200 rounded p-2 max-h-56 overflow-auto whitespace-pre-wrap">
-                        {JSON.stringify(test.details, null, 2)}
-                      </pre>
-                    </>
-                  )}
-                </div>
-              </details>
+                test={test}
+                statusClass={statusClass}
+                isOpen={isOpen}
+                onToggle={(open) =>
+                  setOpenSections((prev) => ({ ...prev, [test.name]: open }))
+                }
+                onRequestExecute={executeToolWithPermission}
+                isExecuting={executingTools.has(test.name)}
+                executionResult={executionResult}
+              />
             );
           })}
         </div>
@@ -604,21 +632,6 @@ export default function Results({
             </div>
           </div>
         )}
-
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <button
-            onClick={() => {
-              const url = `${
-                window.location.origin
-              }/results?data=${encodeURIComponent(JSON.stringify(results))}`;
-              navigator.clipboard.writeText(url);
-              alert("Results URL copied to clipboard");
-            }}
-            className="text-blue-600 hover:underline text-sm"
-          >
-            Share results
-          </button>
-        </div>
       </div>
     </main>
   );
