@@ -19,8 +19,6 @@ export interface TestResult {
   passed: boolean;
   /** Human-readable message describing the test result */
   message: string;
-  /** Time taken to execute the test in milliseconds */
-  duration?: number;
   /** Additional details about the test result */
   details?: TestResultDetails;
 }

@@ -374,7 +374,6 @@ async function testMCPServerWithCLI(
   request: NextRequest
 ): Promise<EvaluationResult> {
   const tests: any[] = [];
-  const test1Start = Date.now();
 
   logger.log("🔗 Testing MCP server using MCP SDK (no CLI)...");
 
@@ -394,7 +393,6 @@ async function testMCPServerWithCLI(
       name: "Tool Discovery",
       passed: true,
       message: `Found ${toolCount} tools using MCP SDK`,
-      duration: Date.now() - test1Start,
       details: { toolCount, tools: toolsResult.tools },
     });
 
@@ -408,7 +406,6 @@ async function testMCPServerWithCLI(
         name: "High-Level User Tasks",
         passed: true,
         message: `Generated ${highLevel.length} user tasks`,
-        duration: Date.now(),
         details: { tasks: highLevel },
       });
       logger.log(`✅ Generated ${highLevel.length} high-level tasks`);
@@ -422,7 +419,6 @@ async function testMCPServerWithCLI(
         name: "High-Level User Tasks",
         passed: false,
         message: "Failed to generate high-level user tasks",
-        duration: Date.now(),
         details: { error: e instanceof Error ? e.message : String(e) },
       });
     }
@@ -433,7 +429,6 @@ async function testMCPServerWithCLI(
       "🤖 Using LLM to analyze tools and generate realistic scenarios..."
     );
 
-    const test2Start = Date.now();
     const scenarios = await generateTestScenarios(
       (toolsResult as any).tools || []
     );
@@ -444,14 +439,12 @@ async function testMCPServerWithCLI(
       name: "Test Scenario Generation",
       passed: true,
       message: `Generated ${scenarios.length} test scenarios`,
-      duration: Date.now() - test2Start,
       details: { scenarios, toolCount },
     });
 
     // Test 3: Try calling a sample tool via SDK
     if (toolsResult.tools && toolsResult.tools.length > 0) {
       logger.log("🔧 Testing tool execution via MCP SDK...");
-      const test3Start = Date.now();
       const sampleTool = toolsResult.tools[0];
       try {
         const testArgs = generateToolArguments(sampleTool);
@@ -463,7 +456,6 @@ async function testMCPServerWithCLI(
           name: "Sample Tool Execution",
           passed: true,
           message: `Called tool "${sampleTool.name}" via SDK`,
-          duration: Date.now() - test3Start,
           details: {
             toolName: sampleTool.name,
             arguments: testArgs,
@@ -479,7 +471,6 @@ async function testMCPServerWithCLI(
           name: "Sample Tool Execution",
           passed: false,
           message: `Tool execution failed: ${msg}`,
-          duration: Date.now() - test3Start,
           details: { toolName: sampleTool.name, error: msg },
         });
       }
@@ -573,11 +564,17 @@ async function testMCPServerWithCLI(
 
         // Step 5: Start authorization flow
         logger.log("🚀 Starting authorization flow...");
+        // Include server URL in state so we can recover it after OAuth redirect
+        const stateData = {
+          serverUrl: serverUrl,
+          timestamp: Date.now(),
+        };
         const authResult = await startAuthorization(authServerUrl as string, {
           metadata: authServerMetadata,
           clientInformation,
           redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
           scope: "openid",
+          state: Buffer.from(JSON.stringify(stateData)).toString("base64"),
           // Only include resource parameter if we have metadata that supports it
           ...(resourceMetadata ? { resource: new URL(serverUrl) } : {}),
         });
@@ -588,7 +585,6 @@ async function testMCPServerWithCLI(
           name: "OAuth Required",
           passed: true,
           message: "Server requires OAuth authentication",
-          duration: Date.now() - test1Start,
           details: {
             requiresAuth: true,
             oauthUrl: authResult.authorizationUrl.toString(),
@@ -609,7 +605,6 @@ async function testMCPServerWithCLI(
           message: `OAuth setup failed: ${
             oauthError instanceof Error ? oauthError.message : "Unknown error"
           }`,
-          duration: Date.now() - test1Start,
           details: {
             requiresAuth: true,
             message: "Use the provided OAuth authorization URL to authenticate",
@@ -942,7 +937,6 @@ async function testMCPServerWithAuthentication(
       name: "Authenticated MCP Connection",
       passed: true,
       message: "Successfully connected with OAuth authentication",
-      duration: Date.now(),
     });
 
     // Step 3: Test tool discovery
@@ -956,7 +950,6 @@ async function testMCPServerWithAuthentication(
       name: "Authenticated Tool Discovery",
       passed: true,
       message: `Discovered ${toolCount} tools`,
-      duration: Date.now(),
       details: { tools: toolsListResult.tools, toolCount },
     });
 
@@ -970,7 +963,6 @@ async function testMCPServerWithAuthentication(
         name: "High-Level User Tasks",
         passed: true,
         message: `Generated ${highLevel.length} user tasks`,
-        duration: Date.now(),
         details: { tasks: highLevel },
       });
       logger.log(`✅ Generated ${highLevel.length} high-level tasks`);
@@ -984,7 +976,6 @@ async function testMCPServerWithAuthentication(
         name: "High-Level User Tasks",
         passed: false,
         message: "Failed to generate high-level user tasks (authenticated)",
-        duration: Date.now(),
         details: { error: e instanceof Error ? e.message : String(e) },
       });
     }
@@ -1022,7 +1013,6 @@ async function testMCPServerWithAuthentication(
             name: `Tool: ${tool.name}`,
             passed: true,
             message: `Successfully called "${tool.name}" with generated arguments`,
-            duration: Date.now(),
             details: {
               toolName: tool.name,
               arguments: testArgs,
@@ -1040,7 +1030,6 @@ async function testMCPServerWithAuthentication(
             name: `Tool: ${tool.name}`,
             passed: false,
             message: `Tool call failed: ${errorMsg}`,
-            duration: Date.now(),
             details: {
               toolName: tool.name,
               error: errorMsg,
@@ -1065,7 +1054,6 @@ async function testMCPServerWithAuthentication(
         name: "Authenticated Resource Discovery",
         passed: true,
         message: `Discovered ${resourceCount} resources`,
-        duration: Date.now(),
         details: { resources: resourcesResult.resources, resourceCount },
       });
     } catch (resourceError) {
@@ -1077,7 +1065,6 @@ async function testMCPServerWithAuthentication(
             ? resourceError.message
             : "Unknown error"
         }`,
-        duration: Date.now(),
       });
     }
 
@@ -1095,7 +1082,6 @@ async function testMCPServerWithAuthentication(
       message: `Authentication failed: ${
         error instanceof Error ? error.message : "Unknown error"
       }`,
-      duration: Date.now(),
     });
   }
 
