@@ -76,20 +76,14 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col items-center gap-3">
             <div className="flex justify-center gap-6 text-sm text-gray-600">
-              <a href="#" className="hover:underline">
+              <a href="https://github.com/scorecard-ai/mcp-eval#readme" target="_blank" rel="noopener noreferrer" className="hover:underline">
                 About
-              </a>
-              <a href="https://github.com/scorecard-ai/mcp-eval#documentation" target="_blank" rel="noopener noreferrer" className="hover:underline">
-                Documentation
               </a>
               <a href="https://github.com/scorecard-ai/mcp-eval" target="_blank" rel="noopener noreferrer" className="hover:underline">
                 GitHub
               </a>
               <a href="https://discord.gg/keUXXXdR" target="_blank" rel="noopener noreferrer" className="hover:underline">
                 Discord
-              </a>
-              <a href="#" className="hover:underline">
-                Privacy
               </a>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500">

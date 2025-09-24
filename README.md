@@ -1,4 +1,4 @@
-# MCP Eval
+# 🚀 MCP Eval - The Ultimate MCP Server Testing Tool
 
 <div align="center">
 
@@ -10,13 +10,29 @@
 
 </div>
 
-## Features
+## 🎯 What is MCP Eval?
 
-- 🔐 **OAuth Support** - Full OAuth 2.0 with PKCE
-- 🧠 **Smart Testing** - Generates realistic test arguments based on tool schemas
-- 🌊 **Real-time Results** - Live streaming of test progress
-- 🎯 **Comprehensive** - Tests tools, resources, and authentication
-- ⚡ **Fast** - Results in seconds, not minutes
+MCP Eval is the first comprehensive testing platform for Model Context Protocol (MCP) servers. Whether you're building an MCP server or integrating with one, MCP Eval gives you instant insights into server capabilities, performance, and compatibility.
+
+### 🔍 Instant Compatibility Check
+
+MCP Eval automatically verifies your server's compatibility with:
+- ✅ **ChatGPT** - Ensure your MCP server works with OpenAI's ChatGPT
+- ✅ **Claude** - Full compatibility testing for Anthropic's Claude
+- ✅ **Cursor** - Validate integration with Cursor IDE
+
+## ✨ Why MCP Eval?
+
+### 🔥 Features That Make Us Different
+
+| Feature | MCP Eval | MCP Inspector | Manual Testing |
+|---------|----------|---------------|----------------|
+| **OAuth Support** | ✅ Full OAuth 2.0 | ❌ Not supported | ❌ Manual tokens |
+| **Intelligent Testing** | ✅ Auto-generates test args | ❌ Empty args only | ❌ Manual input |
+| **Real-time Streaming** | ✅ Live progress updates | ⚠️ Limited | ❌ Wait for results |
+| **Tool Discovery** | ✅ Tests all tools | ✅ Shows tools | ❌ One at a time |
+| **Performance Metrics** | ✅ Response times | ❌ No metrics | ❌ Not measured |
+| **One-Click Testing** | ✅ Just paste URL | ⚠️ CLI required | ❌ Complex setup |
 
 ## Quick Start
 
@@ -41,10 +57,31 @@ OPENAI_API_KEY=your-key-here
 
 ## How It Works
 
+```mermaid
+flowchart LR
+    A[Enter MCP URL] --> B{OAuth Required?}
+    B -->|Yes| C[OAuth Discovery]
+    B -->|No| D[Direct Connection]
+    C --> E[Dynamic Registration]
+    E --> F[User Authorization]
+    F --> G[Token Exchange]
+    G --> H[Test Tools & Resources]
+    D --> H
+    H --> I[Generate Test Args]
+    I --> J[Execute Tests]
+    J --> K[Real-time Results]
+    K --> L[Compatibility Report]
+
+    style A fill:#e1f5fe
+    style L fill:#c8e6c9
+    style H fill:#fff3e0
+```
+
 1. **Enter MCP Server URL** - Supports both public and OAuth-protected servers
 2. **Automatic OAuth Flow** - Handles discovery, registration, and authorization
 3. **Intelligent Testing** - Generates appropriate test data for each tool
 4. **Real-time Results** - See tests run live with detailed feedback
+5. **Compatibility Report** - Get instant confirmation of ChatGPT, Claude, and Cursor support
 
 ## Example Test Generation
 
@@ -65,17 +102,21 @@ OPENAI_API_KEY=your-key-here
 - MCP SDK
 - Server-Sent Events for streaming
 
+## 🐛 Found a Bug?
+
+Report issues at [github.com/scorecard-ai/mcp-eval/issues](https://github.com/scorecard-ai/mcp-eval/issues)
+
 ## Contributing
 
 PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Powered by Scorecard
 
-Built by [Scorecard AI](https://scorecard.ai), the leading platform for AI evaluation and testing.
+Built by [Scorecard AI](https://scorecard.io), the leading platform for AI evaluation and testing.
 
 ## License
 
-MIT © [Scorecard AI](https://scorecard.ai)
+MIT © [Scorecard AI](https://scorecard.io)
 
 ---
 
