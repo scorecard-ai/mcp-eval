@@ -59,6 +59,14 @@ export interface TestResultDetails {
   resourceCount?: number;
   /** Generic message field */
   message?: string;
+  /** Sample arguments for tool testing */
+  sampleArguments?: any;
+  /** Whether permission is required to execute */
+  requiresPermission?: boolean;
+  /** Whether the test has been executed */
+  executed?: boolean;
+  /** Tool's input schema */
+  inputSchema?: any;
 }
 
 /**
@@ -110,6 +118,8 @@ export interface EvaluationResult {
   oauthUrl?: string | null;
   /** Whether the evaluation was performed with authentication */
   authenticated?: boolean;
+  /** Access token obtained from OAuth flow */
+  accessToken?: string;
 }
 
 /**

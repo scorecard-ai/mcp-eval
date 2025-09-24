@@ -277,6 +277,7 @@ export default function ResultsPage() {
         serverUrl={serverUrl}
         authRequired={authRequired}
         handleOAuthFlow={handleOAuthFlow}
+        accessToken={results.accessToken}
       />
     );
   }

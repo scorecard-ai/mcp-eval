@@ -20,11 +20,106 @@ import {
   startAuthorization,
   exchangeAuthorization,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
 import type {
   EvaluationResult,
   StreamLogger,
   TestResult,
 } from "@/app/types/mcp-eval";
+
+/**
+ * Generates intelligent sample arguments for a tool using AI
+ */
+async function generateSampleArguments(
+  tool: { name: string; description?: string; inputSchema?: any },
+  logger: StreamLogger
+): Promise<any> {
+  if (!tool.inputSchema || !tool.inputSchema.properties) {
+    return {};
+  }
+
+  // Check if OpenAI API key is available
+  if (!process.env.OPENAI_API_KEY) {
+    logger.log("⚠️  OpenAI API key not found, using fallback argument generation");
+    return generateFallbackArguments(tool.inputSchema);
+  }
+
+  try {
+    const prompt = `
+You are an expert at generating test arguments for MCP (Model Context Protocol) tools.
+
+Tool Name: ${tool.name}
+Tool Description: ${tool.description || "No description provided"}
+Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}
+
+Generate realistic and valid test arguments for this tool that conform to the JSON schema.
+The arguments should be practical examples that would effectively test the tool's functionality.
+
+Respond ONLY with valid JSON that matches the schema. Do not include any explanation or markdown formatting.
+`;
+
+    const { text } = await generateText({
+      model: openai("gpt-4o-mini"),
+      system: "You are a JSON generator that only outputs valid JSON without any markdown formatting or explanations.",
+      prompt,
+      temperature: 0.3,
+    });
+
+    try {
+      // Parse and validate the generated JSON
+      const args = JSON.parse(text);
+      logger.log(`✨ AI generated arguments for tool '${tool.name}'`);
+      return args;
+    } catch (parseError) {
+      logger.log(`⚠️  Failed to parse AI response, using fallback for '${tool.name}'`);
+      return generateFallbackArguments(tool.inputSchema);
+    }
+  } catch (error) {
+    logger.log(`⚠️  AI generation failed for '${tool.name}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return generateFallbackArguments(tool.inputSchema);
+  }
+}
+
+/**
+ * Fallback function to generate basic sample arguments
+ */
+function generateFallbackArguments(schema: any): any {
+  if (!schema || !schema.properties) {
+    return {};
+  }
+
+  const args: any = {};
+
+  for (const [propName, propSchema] of Object.entries(schema.properties)) {
+    const prop = propSchema as any;
+
+    // Generate sample values based on type
+    if (prop.type === "string") {
+      if (prop.enum) {
+        args[propName] = prop.enum[0]; // Use first enum value
+      } else if (propName.toLowerCase().includes("url")) {
+        args[propName] = "https://example.com";
+      } else if (propName.toLowerCase().includes("email")) {
+        args[propName] = "user@example.com";
+      } else if (propName.toLowerCase().includes("path")) {
+        args[propName] = "/path/to/file";
+      } else {
+        args[propName] = `sample_${propName}`;
+      }
+    } else if (prop.type === "number" || prop.type === "integer") {
+      args[propName] = prop.minimum ?? prop.default ?? 1;
+    } else if (prop.type === "boolean") {
+      args[propName] = prop.default ?? false;
+    } else if (prop.type === "array") {
+      args[propName] = [];
+    } else if (prop.type === "object") {
+      args[propName] = {};
+    }
+  }
+
+  return args;
+}
 
 /**
  * Creates a logger that outputs to both console and SSE stream
@@ -74,7 +169,38 @@ async function testMCPServerConnectionAndAuthenticateIfNecessary(
     const transport = new StreamableHTTPClientTransport(new URL(serverUrl));
     await mcpClient.connect(transport);
 
-    await mcpClient.listTools();
+    const toolsListResult = await mcpClient.listTools();
+
+  // Generate test cases for discovered tools (without executing) - in parallel
+  if (toolsListResult.tools && toolsListResult.tools.length > 0) {
+    logger.log(`📋 Found ${toolsListResult.tools.length} tools, generating test cases in parallel...`);
+
+    // Generate all test cases in parallel
+    const testCasePromises = toolsListResult.tools.map(async (tool) => {
+      const sampleArgs = await generateSampleArguments(tool, logger);
+      logger.log(`📋 Prepared test case for tool '${tool.name}'`);
+
+      return {
+        name: `Tool Test Case: ${tool.name}`,
+        passed: false,
+        message: `Test case prepared for tool '${tool.name}' - awaiting permission to execute`,
+        details: {
+          toolName: tool.name,
+          description: tool.description || "No description provided",
+          inputSchema: tool.inputSchema,
+          sampleArguments: sampleArgs,
+          requiresPermission: true,
+          executed: false,
+        },
+      };
+    });
+
+    // Wait for all test cases to be generated
+    const toolTestCases = await Promise.all(testCasePromises);
+    tests.push(...toolTestCases);
+
+    logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
+  }
 
     return {
       serverUrl,
@@ -249,6 +375,7 @@ async function testMCPServerWithAuthentication(
     message: string;
     details?: any;
   }> = [];
+  let tokens: any = null;
   logger.log("🔐 Starting authenticated MCP server evaluation...");
 
   try {
@@ -284,7 +411,7 @@ async function testMCPServerWithAuthentication(
       );
     }
 
-    const tokens = await exchangeAuthorization(authServerUrl as string, {
+    tokens = await exchangeAuthorization(authServerUrl as string, {
       metadata: authServerMetadata,
       clientInformation: clientInfo,
       authorizationCode: authCode,
@@ -348,6 +475,10 @@ async function testMCPServerWithAuthentication(
       name: "Authenticated MCP Connection",
       passed: true,
       message: "Successfully connected with OAuth authentication",
+      details: {
+        authenticated: true,
+        accessToken: tokens.access_token,
+      },
     });
 
     // Step 3: Test tool discovery
@@ -363,6 +494,37 @@ async function testMCPServerWithAuthentication(
       message: `Discovered ${toolCount} tools`,
       details: { tools: toolsListResult.tools, toolCount },
     });
+
+    // Step 3.1: Generate test cases for each discovered tool (in parallel)
+    if (toolsListResult.tools && toolsListResult.tools.length > 0) {
+      logger.log("🧪 Generating test cases for discovered tools in parallel...");
+
+      // Generate all test cases in parallel
+      const testCasePromises = toolsListResult.tools.map(async (tool) => {
+        const sampleArgs = await generateSampleArguments(tool, logger);
+        logger.log(`📋 Prepared test case for tool '${tool.name}'`);
+
+        return {
+          name: `Tool Test Case: ${tool.name}`,
+          passed: false, // Not executed yet
+          message: `Test case prepared for tool '${tool.name}' - awaiting permission to execute`,
+          details: {
+            toolName: tool.name,
+            description: tool.description || "No description provided",
+            inputSchema: tool.inputSchema,
+            sampleArguments: sampleArgs,
+            requiresPermission: true,
+            executed: false,
+          },
+        };
+      });
+
+      // Wait for all test cases to be generated
+      const toolTestCases = await Promise.all(testCasePromises);
+      tests.push(...toolTestCases);
+
+      logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
+    }
 
     // Step 4: Test resource discovery
     logger.log("📚 Discovering resources with authentication...");
@@ -413,6 +575,7 @@ async function testMCPServerWithAuthentication(
     serverUrl,
     tests,
     timestamp: new Date(),
+    accessToken: tokens?.access_token,
   };
 }
 
