@@ -1,29 +1,28 @@
-# 🚀 MCP Eval
+# MCP Eval
+
+<div align="center">
 
 [![Live Demo](https://img.shields.io/badge/🔴-Live%20Demo-red?style=for-the-badge)](https://www.mcpevals.ai)
 [![GitHub Stars](https://img.shields.io/github/stars/scorecard-ai/mcp-eval?style=for-the-badge)](https://github.com/scorecard-ai/mcp-eval/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/keUXXXdR)
 
-**Test any MCP server in seconds** - OAuth support, real-time results, intelligent test generation.
+**Test MCP servers instantly with OAuth support and intelligent test generation**
 
-[🌐 Try it Now](https://www.mcpevals.ai) • [📖 Docs](#quick-start) • [💬 Discord](https://discord.gg/keUXXXdR)
+</div>
 
-## What is MCP Eval?
+## Features
 
-The first comprehensive testing platform for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers. Test tools, resources, and authentication flows with one click.
+- 🔐 **OAuth Support** - Full OAuth 2.0 with PKCE
+- 🧠 **Smart Testing** - Generates realistic test arguments based on tool schemas
+- 🌊 **Real-time Results** - Live streaming of test progress
+- 🎯 **Comprehensive** - Tests tools, resources, and authentication
+- ⚡ **Fast** - Results in seconds, not minutes
 
-## ✨ Key Features
+## Quick Start
 
-- **🔐 OAuth Support** - Full OAuth 2.0 with PKCE, dynamic client registration
-- **🧪 Smart Testing** - Automatically generates test arguments based on tool schemas
-- **⚡ Real-time Results** - Stream test progress as it happens
-- **🔍 Comprehensive** - Tests tools, resources, prompts, and performance
+### Web App
 
-## 🚀 Quick Start
-
-### Web (Easiest)
-
-Visit [mcpevals.ai](https://www.mcpevals.ai) and enter your MCP server URL.
+Visit [mcpevals.ai](https://www.mcpevals.ai) → Paste MCP URL → Click "Evaluate"
 
 ### Self-Host
 
@@ -32,45 +31,49 @@ git clone https://github.com/scorecard-ai/mcp-eval.git
 cd mcp-eval/mcp-eval-site
 npm install
 npm run dev
-# Open http://localhost:3000
 ```
 
-Set environment variables:
-```bash
+Set environment variables in `.env.local`:
+```
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-OPENAI_API_KEY=your-key  # Optional, for AI features
+OPENAI_API_KEY=your-key-here
 ```
 
-## 🧠 How It Works
+## How It Works
 
-MCP Eval intelligently tests your server by:
+1. **Enter MCP Server URL** - Supports both public and OAuth-protected servers
+2. **Automatic OAuth Flow** - Handles discovery, registration, and authorization
+3. **Intelligent Testing** - Generates appropriate test data for each tool
+4. **Real-time Results** - See tests run live with detailed feedback
 
-1. **Discovering** all available tools and resources
-2. **Generating** appropriate test data for each tool
-3. **Executing** tests with proper authentication
-4. **Reporting** results with timing and error details
+## Example Test Generation
 
-Example test generation:
 ```javascript
-// For tool: search_users
-{ query: "test search", limit: 10 }
+// Tool: search_users
+// Generated arguments:
+{ "query": "test search", "limit": 10 }
 
-// For tool: create_task
-{ title: "Test Task", priority: "medium" }
+// Tool: create_task
+// Generated arguments:
+{ "title": "Test Task", "priority": "medium" }
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **Next.js 15** - React framework
-- **MCP SDK** - Official TypeScript SDK
-- **Server-Sent Events** - Real-time streaming
-- **Tailwind CSS** - Styling
+- Next.js 15 with App Router
+- TypeScript
+- MCP SDK
+- Server-Sent Events for streaming
 
-## 🏆 Powered by Scorecard
+## Contributing
+
+PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Powered by Scorecard
 
 Built by [Scorecard AI](https://scorecard.ai), the leading platform for AI evaluation and testing.
 
-## 📜 License
+## License
 
 MIT © [Scorecard AI](https://scorecard.ai)
 
@@ -78,6 +81,6 @@ MIT © [Scorecard AI](https://scorecard.ai)
 
 <div align="center">
 
-⭐ **Star us on GitHub** • [Discord](https://discord.gg/keUXXXdR) • [Website](https://www.mcpevals.ai)
+[Website](https://www.mcpevals.ai) • [Discord](https://discord.gg/keUXXXdR) • [GitHub](https://github.com/scorecard-ai/mcp-eval)
 
 </div>
