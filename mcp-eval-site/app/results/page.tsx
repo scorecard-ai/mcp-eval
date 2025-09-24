@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Search } from "lucide-react";
 import type { EvaluationResult } from "@/app/types/mcp-eval";
 import Results from "@/app/components/Results";
 
-export default function ResultsPage() {
+function ResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [serverUrl, setServerUrl] = useState("");
@@ -284,4 +283,25 @@ export default function ResultsPage() {
 
   // Fallback - shouldn't normally reach here
   return null;
+}
+
+// Loading component for Suspense
+function ResultsLoading() {
+  return (
+    <main className="min-h-screen bg-white flex flex-col items-center justify-center">
+      <div className="text-center">
+        <div className="inline-block w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading...</h2>
+      </div>
+    </main>
+  );
+}
+
+// Main export wrapped in Suspense
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<ResultsLoading />}>
+      <ResultsContent />
+    </Suspense>
+  );
 }
