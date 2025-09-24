@@ -26,6 +26,7 @@ import type {
   EvaluationResult,
   StreamLogger,
   TestResult,
+  MCPTool,
 } from "@/app/types/mcp-eval";
 
 /**
@@ -121,6 +122,74 @@ function generateFallbackArguments(schema: any): any {
   return args;
 }
 
+function evaluateClientCompatibility(tools: MCPTool[] = []) {
+  const toolNames = tools.map((tool) => tool.name);
+  const toolNameSet = new Set(toolNames.map((name) => name.toLowerCase()));
+  const discoveredTools = Array.from(new Set(toolNames)).sort();
+  const hasAnyTools = discoveredTools.length > 0;
+
+  const chatGptRequirements = ["search", "fetch"];
+  const chatGptMissing = chatGptRequirements.filter(
+    (req) => !toolNameSet.has(req)
+  );
+
+  const cursorKeywords = ["file", "workspace", "project", "repo", "read", "write"];
+  const cursorTools = tools
+    .filter((tool) =>
+      cursorKeywords.some((keyword) =>
+        tool.name.toLowerCase().includes(keyword.toLowerCase())
+      )
+    )
+    .map((tool) => tool.name);
+
+  const compatibility = [
+    {
+      client: "Claude",
+      compatible: hasAnyTools,
+      reason: hasAnyTools
+        ? "Server exposes at least one tool via listTools"
+        : "No tools discovered; Claude clients need tools to be exposed",
+    },
+    {
+      client: "Cursor",
+      compatible: cursorTools.length > 0,
+      reason:
+        cursorTools.length > 0
+          ? `Found workspace-oriented tools (${cursorTools.join(", ")})`
+          : "No workspace or file tools detected; Cursor integrations typically rely on these",
+    },
+    {
+      client: "ChatGPT",
+      compatible: chatGptMissing.length === 0,
+      reason:
+        chatGptMissing.length === 0
+          ? "Required 'search' and 'fetch' tools are present"
+          : `Missing required tools: ${chatGptMissing.join(", ")}`,
+      requirements: chatGptRequirements,
+    },
+  ];
+
+  const incompatibleClients = compatibility
+    .filter((entry) => !entry.compatible)
+    .map((entry) => entry.client);
+
+  const message =
+    incompatibleClients.length === 0
+      ? "Compatible with Claude, Cursor, and ChatGPT"
+      : `Potential issues detected for ${incompatibleClients.join(", ")}`;
+
+  return {
+    passed: incompatibleClients.length === 0,
+    message,
+    details: {
+      compatibility,
+      discoveredTools,
+      notes:
+        "Compatibility checks are heuristic; verify with the target client before production use.",
+    },
+  };
+}
+
 /**
  * Creates a logger that outputs to both console and SSE stream
  *
@@ -171,36 +240,50 @@ async function testMCPServerConnectionAndAuthenticateIfNecessary(
 
     const toolsListResult = await mcpClient.listTools();
 
-  // Generate test cases for discovered tools (without executing) - in parallel
-  if (toolsListResult.tools && toolsListResult.tools.length > 0) {
-    logger.log(`📋 Found ${toolsListResult.tools.length} tools, generating test cases in parallel...`);
+    const compatibilityAssessment = evaluateClientCompatibility(
+      toolsListResult.tools || []
+    );
 
-    // Generate all test cases in parallel
-    const testCasePromises = toolsListResult.tools.map(async (tool) => {
-      const sampleArgs = await generateSampleArguments(tool, logger);
-      logger.log(`📋 Prepared test case for tool '${tool.name}'`);
+    logger.log(
+      `🤝 Client compatibility: ${compatibilityAssessment.message}`
+    );
 
-      return {
-        name: `Tool Test Case: ${tool.name}`,
-        passed: false,
-        message: `Test case prepared for tool '${tool.name}' - awaiting permission to execute`,
-        details: {
-          toolName: tool.name,
-          description: tool.description || "No description provided",
-          inputSchema: tool.inputSchema,
-          sampleArguments: sampleArgs,
-          requiresPermission: true,
-          executed: false,
-        },
-      };
+    tests.push({
+      name: "Client Compatibility",
+      passed: compatibilityAssessment.passed,
+      message: compatibilityAssessment.message,
+      details: compatibilityAssessment.details,
     });
 
-    // Wait for all test cases to be generated
-    const toolTestCases = await Promise.all(testCasePromises);
-    tests.push(...toolTestCases);
+    if (toolsListResult.tools && toolsListResult.tools.length > 0) {
+      logger.log(
+        `📋 Found ${toolsListResult.tools.length} tools, generating test cases in parallel...`
+      );
 
-    logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
-  }
+      const testCasePromises = toolsListResult.tools.map(async (tool) => {
+        const sampleArgs = await generateSampleArguments(tool, logger);
+        logger.log(`📋 Prepared test case for tool '${tool.name}'`);
+
+        return {
+          name: `Tool Test Case: ${tool.name}`,
+          passed: false,
+          message: `Test case prepared for tool '${tool.name}' - awaiting permission to execute`,
+          details: {
+            toolName: tool.name,
+            description: tool.description || "No description provided",
+            inputSchema: tool.inputSchema,
+            sampleArguments: sampleArgs,
+            requiresPermission: true,
+            executed: false,
+          },
+        };
+      });
+
+      const toolTestCases = await Promise.all(testCasePromises);
+      tests.push(...toolTestCases);
+
+      logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
+    }
 
     return {
       serverUrl,
@@ -493,6 +576,21 @@ async function testMCPServerWithAuthentication(
       passed: true,
       message: `Discovered ${toolCount} tools`,
       details: { tools: toolsListResult.tools, toolCount },
+    });
+
+    const compatibilityAssessment = evaluateClientCompatibility(
+      toolsListResult.tools || []
+    );
+
+    logger.log(
+      `🤝 Client compatibility: ${compatibilityAssessment.message}`
+    );
+
+    tests.push({
+      name: "Client Compatibility",
+      passed: compatibilityAssessment.passed,
+      message: compatibilityAssessment.message,
+      details: compatibilityAssessment.details,
     });
 
     // Step 3.1: Generate test cases for each discovered tool (in parallel)

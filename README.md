@@ -8,6 +8,8 @@
 
 **Test MCP servers instantly with OAuth support and intelligent test generation**
 
+<img width="500" alt="Screenshot of an MCP scorecard" src="https://github.com/user-attachments/assets/910e6f67-f997-4d1b-af0a-a4e70a426974" />
+
 </div>
 
 ## 🎯 What is MCP Eval?

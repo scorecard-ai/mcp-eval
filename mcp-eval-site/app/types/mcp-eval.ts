@@ -67,6 +67,17 @@ export interface TestResultDetails {
   executed?: boolean;
   /** Tool's input schema */
   inputSchema?: any;
+  /** Compatibility insights for popular MCP clients */
+  compatibility?: Array<{
+    client: string;
+    compatible: boolean;
+    reason: string;
+    requirements?: string[];
+  }>;
+  /** Unique tool names discovered during evaluation */
+  discoveredTools?: string[];
+  /** Additional notes for the test */
+  notes?: string;
 }
 
 /**

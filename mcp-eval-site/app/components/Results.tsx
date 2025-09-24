@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, PlayCircle, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { EvaluationResult } from "@/app/types/mcp-eval";
 
 interface ResultsProps {
@@ -36,6 +36,108 @@ export default function Results({
   const hasExecutableTools = results.tests.some(
     (test) => test.details?.requiresPermission
   );
+
+  const scorecard = useMemo(() => {
+    const passedTests = results.tests.filter((test) => test.passed).length;
+    const totalTests = results.tests.length;
+    const passRate =
+      totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+
+    const timestamp = new Date(results.timestamp);
+    const testedAt = Number.isNaN(timestamp.getTime())
+      ? `${results.timestamp}`
+      : timestamp.toLocaleString();
+
+    const authConnectionTest = results.tests.find(
+      (test) => test.name === "Authenticated MCP Connection"
+    );
+    const oauthRequiredTest = results.tests.find(
+      (test) => test.name === "OAuth Required"
+    );
+    const oauthFailureTest = results.tests.find((test) =>
+      ["OAuth Setup Failed", "OAuth Authentication"].includes(test.name)
+    );
+
+    let authLabel = "Public (no authentication detected)";
+    let authDetail = "Server responded to unauthenticated requests.";
+
+    if (authConnectionTest) {
+      authLabel = "OAuth (authenticated)";
+      authDetail =
+        authConnectionTest.message ||
+        "Successfully connected using OAuth credentials.";
+    } else if (oauthRequiredTest) {
+      authLabel = oauthFailureTest
+        ? "OAuth required (setup failed)"
+        : "OAuth required";
+      authDetail =
+        oauthFailureTest?.message ||
+        oauthRequiredTest.message ||
+        "Server indicated OAuth is required.";
+    }
+
+    const compatibilityTest = [...results.tests]
+      .reverse()
+      .find((test) => test.name === "Client Compatibility");
+
+    const compatibilityDetails = Array.isArray(
+      (compatibilityTest?.details as any)?.compatibility
+    )
+      ? (compatibilityTest?.details as any)?.compatibility
+      : [];
+
+    type CompatibilityEntry = {
+      client: string;
+      compatible: boolean;
+      reason?: string;
+    };
+
+    const compatibilityEntries: CompatibilityEntry[] = compatibilityDetails.map(
+      (entry: any) => ({
+        client: entry.client,
+        compatible: entry.compatible,
+        reason: entry.reason,
+      })
+    );
+
+    const resourceTest = [...results.tests]
+      .reverse()
+      .find((test) => test.name.includes("Resource Discovery"));
+
+    const resourceStatus = resourceTest
+      ? resourceTest.passed
+        ? "Success"
+        : "Failed"
+      : "Not attempted";
+
+    const resourceDetail =
+      resourceTest?.message ||
+      (resourceStatus === "Not attempted"
+        ? "Resource discovery was not part of this evaluation."
+        : undefined);
+
+    return {
+      serverUrl: results.serverUrl,
+      testedAt,
+      auth: {
+        label: authLabel,
+        detail: authDetail,
+      },
+      compatibility: {
+        summary: compatibilityTest?.message || "Compatibility not evaluated",
+        entries: compatibilityEntries,
+      },
+      resources: {
+        status: resourceStatus,
+        detail: resourceDetail,
+      },
+      tests: {
+        passed: passedTests,
+        total: totalTests,
+        passRate,
+      },
+    };
+  }, [results]);
 
   async function executeToolWithPermission(test: any) {
     const { toolName, sampleArguments } = test.details;
@@ -204,9 +306,9 @@ export default function Results({
 
             <div className="bg-gray-50 rounded p-3 mb-4">
               <p className="text-xs text-gray-500 mb-2">Tool Description:</p>
-              <p className="text-sm text-gray-700 mb-3">
+              <div className="text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto pr-2">
                 {showPermissionDialog.description}
-              </p>
+              </div>
               <p className="text-xs text-gray-500 mb-2">Arguments:</p>
               <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-auto max-h-32">
                 {JSON.stringify(showPermissionDialog.arguments, null, 2)}
@@ -233,10 +335,123 @@ export default function Results({
 
       {/* Results */}
       <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between text-white">
+              <div>
+                <p className="text-xs uppercase tracking-[0.32em] text-blue-100">
+                  MCP Evaluation Scorecard
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold">
+                  {scorecard.serverUrl}
+                </h2>
+                <p className="mt-1 text-sm text-blue-100/90">
+                  Tested {scorecard.testedAt}
+                </p>
+              </div>
+              <div className="flex items-center gap-4 self-start sm:self-center">
+                <div className="rounded-full bg-white/10 px-5 py-3 text-center">
+                  <p className="text-[0.7rem] uppercase tracking-wide text-blue-100">
+                    Pass Rate
+                  </p>
+                  <p className="text-4xl font-semibold leading-none">
+                    {scorecard.tests.passRate}%
+                  </p>
+                </div>
+                <div className="text-sm text-blue-100">
+                  <p className="text-lg font-semibold text-white">
+                    {scorecard.tests.passed} / {scorecard.tests.total}
+                  </p>
+                  <p>tests passed</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-6 p-6 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Authentication
+              </p>
+              <p className="mt-2 text-base font-medium text-slate-900">
+                {scorecard.auth.label}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                {scorecard.auth.detail}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Resource Discovery
+              </p>
+              <p
+                className={`mt-2 text-base font-medium ${
+                  scorecard.resources.status === "Success"
+                    ? "text-emerald-600"
+                    : scorecard.resources.status === "Failed"
+                    ? "text-rose-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {scorecard.resources.status}
+              </p>
+              {scorecard.resources.detail && (
+                <p className="mt-1 text-sm text-slate-600">
+                  {scorecard.resources.detail}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Client Compatibility
+              </p>
+              <p className="mt-2 text-sm text-slate-700">
+                {scorecard.compatibility.summary}
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {scorecard.compatibility.entries.length > 0 ? (
+                  scorecard.compatibility.entries.map((entry) => (
+                    <li
+                      key={entry.client}
+                      className="flex flex-col gap-1 rounded-lg bg-white/70 px-3 py-2 text-sm shadow-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-slate-900">
+                          {entry.client}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold uppercase tracking-wide ${
+                            entry.compatible
+                              ? "text-emerald-600"
+                              : "text-rose-600"
+                          }`}
+                        >
+                          {entry.compatible ? "Compatible" : "Needs Attention"}
+                        </span>
+                      </div>
+                      {entry.reason && (
+                        <p className="text-xs text-slate-600">{entry.reason}</p>
+                      )}
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-sm text-slate-600">
+                    Compatibility data not available.
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div className="flex justify-end mb-4">
           <button
             onClick={executeAllTools}
-            disabled={!hasExecutableTools || executingAll || executingTools.size > 0}
+            disabled={
+              !hasExecutableTools || executingAll || executingTools.size > 0
+            }
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {executingAll ? (
@@ -306,16 +521,20 @@ export default function Results({
                         )}
 
                       {toolResults.has(test.name) && (
-                        <div className={`mt-3 p-3 border rounded ${
-                          toolResults.get(test.name)?.success
-                            ? "bg-green-50 border-green-200"
-                            : "bg-red-50 border-red-200"
-                        }`}>
-                          <p className={`text-xs font-semibold mb-1 ${
+                        <div
+                          className={`mt-3 p-3 border rounded ${
                             toolResults.get(test.name)?.success
-                              ? "text-green-700"
-                              : "text-red-700"
-                          }`}>
+                              ? "bg-green-50 border-green-200"
+                              : "bg-red-50 border-red-200"
+                          }`}
+                        >
+                          <p
+                            className={`text-xs font-semibold mb-1 ${
+                              toolResults.get(test.name)?.success
+                                ? "text-green-700"
+                                : "text-red-700"
+                            }`}
+                          >
                             {toolResults.get(test.name)?.success
                               ? "✅ Execution Successful"
                               : "❌ Execution Failed"}
@@ -328,8 +547,8 @@ export default function Results({
                           <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-auto max-h-32">
                             {JSON.stringify(
                               toolResults.get(test.name)?.result ||
-                              toolResults.get(test.name)?.details ||
-                              toolResults.get(test.name),
+                                toolResults.get(test.name)?.details ||
+                                toolResults.get(test.name),
                               null,
                               2
                             )}
