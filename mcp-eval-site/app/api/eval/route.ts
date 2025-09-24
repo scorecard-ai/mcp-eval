@@ -1,6 +1,20 @@
+/**
+ * MCP Server Evaluation API Route
+ *
+ * This route handles the evaluation of MCP (Model Context Protocol) servers,
+ * supporting both authenticated and unauthenticated connections.
+ *
+ * Features:
+ * - OAuth 2.0 authentication with PKCE flow
+ * - Dynamic client registration
+ * - Support for servers with and without OAuth Protected Resource Metadata
+ * - Comprehensive testing of MCP protocol compliance
+ * - Tool and resource discovery
+ * - Intelligent test scenario generation using LLM
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   UnauthorizedError,
@@ -10,8 +24,24 @@ import {
   discoverOAuthProtectedResourceMetadata,
   discoverAuthorizationServerMetadata,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import type {
+  TestResult,
+  MCPTool,
+  TestScenario,
+  OAuthFlowResult,
+  EvaluationResult,
+  EvaluationRequest,
+} from "@/app/types/mcp-eval";
 
-// In-memory OAuth client provider based on the official MCP SDK example
+/**
+ * In-memory OAuth client provider implementation
+ *
+ * This class manages OAuth client state during the authentication flow.
+ * Based on the official MCP SDK example but adapted for web applications.
+ *
+ * @deprecated This class is included for reference but not actively used
+ * in favor of lower-level OAuth functions for better control
+ */
 class InMemoryOAuthClientProvider {
   private _clientInformation: any;
   private _tokens: any;
@@ -83,8 +113,25 @@ class InMemoryOAuthClientProvider {
   }
 }
 
-// New function using lower-level OAuth functions for better web app support
-async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
+/**
+ * Sets up OAuth 2.0 authorization flow for MCP server authentication
+ *
+ * This function handles the complete OAuth setup process:
+ * 1. Attempts to discover OAuth Protected Resource Metadata (RFC 9728)
+ * 2. Falls back to direct OAuth if metadata is not available
+ * 3. Discovers authorization server metadata (RFC 8414 or OIDC)
+ * 4. Dynamically registers the client
+ * 5. Generates authorization URL with PKCE
+ *
+ * @param serverUrl - The URL of the MCP server requiring authentication
+ * @param baseUrl - The base URL of this application for OAuth callbacks
+ * @returns OAuth flow result containing authorization URL and client details
+ * @throws Error if authorization server metadata cannot be discovered
+ */
+async function setupOAuthFlow(
+  serverUrl: string,
+  baseUrl: string
+): Promise<OAuthFlowResult> {
   console.log(
     "🔍 Setting up OAuth flow using lower-level MCP SDK functions..."
   );
@@ -168,14 +215,27 @@ async function setupOAuthFlow(serverUrl: string, baseUrl: string) {
   }
 }
 
-// Function to exchange authorization code for access tokens
+/**
+ * Exchanges OAuth authorization code for access tokens
+ *
+ * Implements the token exchange step of the OAuth 2.0 flow with PKCE.
+ * Supports servers both with and without OAuth Protected Resource Metadata.
+ *
+ * @param serverUrl - The URL of the MCP server
+ * @param authCode - Authorization code received from OAuth callback
+ * @param clientInformation - OAuth client registration information
+ * @param codeVerifier - PKCE code verifier for secure token exchange
+ * @param baseUrl - Base URL for redirect URI construction
+ * @returns OAuth tokens including access_token and optional refresh_token
+ * @throws Error if token exchange fails or auth server is unreachable
+ */
 async function performOAuthTokenExchange(
   serverUrl: string,
   authCode: string,
   clientInformation: any,
   codeVerifier: string,
   baseUrl: string
-) {
+): Promise<any> {
   console.log("🔄 Exchanging authorization code for access tokens...");
 
   try {
@@ -220,8 +280,19 @@ async function performOAuthTokenExchange(
   }
 }
 
-// Function to generate realistic test scenarios based on discovered tools
-async function generateTestScenarios(tools: any[]) {
+/**
+ * Generates realistic test scenarios based on discovered MCP tools
+ *
+ * Uses OpenAI's GPT-5 Mini model to analyze tool capabilities and generate
+ * practical test scenarios. Falls back to heuristic-based scenarios if
+ * the LLM call fails or times out.
+ *
+ * @param tools - Array of MCP tool definitions discovered from the server
+ * @returns Array containing one test scenario (limited for performance)
+ */
+async function generateTestScenarios(
+  tools: MCPTool[]
+): Promise<TestScenario[]> {
   console.log(
     "🤖 Using LLM to analyze tools and generate realistic scenarios..."
   );
@@ -364,8 +435,16 @@ Example format:
   }
 }
 
-// Fallback scenario generation if LLM fails
-function generateFallbackScenarios(tools: any[]) {
+/**
+ * Generates fallback test scenarios using heuristics
+ *
+ * Creates basic test scenarios based on tool name patterns when
+ * LLM-based generation is unavailable or fails.
+ *
+ * @param tools - Array of MCP tool definitions
+ * @returns Array of heuristically generated test scenarios
+ */
+function generateFallbackScenarios(tools: MCPTool[]): TestScenario[] {
   const toolNames = tools.map((t) => t.name.toLowerCase());
   const scenarios = [];
 
@@ -390,7 +469,7 @@ function generateFallbackScenarios(tools: any[]) {
         )
         .map((t) => t.name)
         .slice(0, 3),
-      complexity: "medium",
+      complexity: "medium" as "medium",
       category: "security",
     });
   }
@@ -416,7 +495,7 @@ function generateFallbackScenarios(tools: any[]) {
         )
         .map((t) => t.name)
         .slice(0, 3),
-      complexity: "simple",
+      complexity: "simple" as "simple",
       category: "analysis",
     });
   }
@@ -427,7 +506,7 @@ function generateFallbackScenarios(tools: any[]) {
       title: "Tool Discovery Test",
       description: "Test the most commonly used tools from this MCP server",
       expectedTools: tools.slice(0, 3).map((t) => t.name),
-      complexity: "simple",
+      complexity: "simple" as "simple",
       category: "general",
     });
   }
@@ -435,7 +514,16 @@ function generateFallbackScenarios(tools: any[]) {
   return scenarios;
 }
 
-// Helper function following the official MCP SDK pattern
+/**
+ * Attempts to establish MCP connection with OAuth support
+ *
+ * @deprecated This function is not actively used but kept for reference
+ *
+ * @param mcpClient - MCP client instance
+ * @param oauthProvider - OAuth provider for authentication
+ * @param serverUrl - MCP server URL
+ * @param authCode - Optional authorization code for OAuth flow
+ */
 async function attemptConnection(
   mcpClient: Client,
   oauthProvider: InMemoryOAuthClientProvider,
@@ -472,6 +560,22 @@ async function attemptConnection(
   }
 }
 
+/**
+ * Tests an MCP server that requires OAuth authentication
+ *
+ * Performs comprehensive testing of an authenticated MCP server:
+ * 1. Exchanges authorization code for access tokens
+ * 2. Establishes authenticated connection
+ * 3. Discovers tools and resources
+ * 4. Generates and stores test scenarios
+ *
+ * @param serverUrl - URL of the MCP server to test
+ * @param authCode - OAuth authorization code from callback
+ * @param baseUrl - Base URL for OAuth redirect URIs
+ * @param clientInfo - Stored OAuth client information
+ * @param storedCodeVerifier - Stored PKCE code verifier
+ * @returns Array of test results
+ */
 async function testMCPServerWithOAuth(
   serverUrl: string,
   authCode: string,
@@ -596,21 +700,14 @@ async function testMCPServerWithOAuth(
   return tests;
 }
 
-type TestResult = {
-  name: string;
-  passed: boolean;
-  message: string;
-  duration?: number;
-  details?: any;
-};
-
-type MCPTool = {
-  name: string;
-  description: string;
-  inputSchema?: any;
-};
-
-async function runAutoEvaluation(serverUrl: string) {
+/**
+ * Runs comprehensive auto-evaluation of an MCP server
+ *
+ * @param serverUrl - URL of the MCP server to evaluate
+ * @returns Error response (not yet implemented)
+ * @todo Implement auto-evaluation with comprehensive testing
+ */
+async function runAutoEvaluation(serverUrl: string): Promise<NextResponse> {
   return NextResponse.json(
     {
       error: "Auto-evaluation not implemented yet",
@@ -619,16 +716,27 @@ async function runAutoEvaluation(serverUrl: string) {
   );
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * POST endpoint for MCP server evaluation
+ *
+ * Handles three types of evaluation requests:
+ * 1. Basic connectivity and protocol testing (no auth)
+ * 2. OAuth flow initiation (returns auth URL)
+ * 3. Authenticated testing (with auth code)
+ *
+ * @param request - Next.js request object containing evaluation parameters
+ * @returns JSON response with test results or OAuth redirect information
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    // Parse request body with proper typing
     const {
       serverUrl,
       autoEval = false,
       authCode,
-      state,
       clientInfo,
       codeVerifier,
-    } = await request.json();
+    } = (await request.json()) as EvaluationRequest;
 
     // Get the current host for OAuth redirects
     const host = request.headers.get("host") || "localhost:3000";

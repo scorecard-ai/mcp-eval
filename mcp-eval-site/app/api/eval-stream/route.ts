@@ -1,3 +1,17 @@
+/**
+ * MCP Server Evaluation Streaming API Route
+ *
+ * This route provides real-time evaluation of MCP servers using Server-Sent Events (SSE).
+ * It streams evaluation progress and results to the client as they happen.
+ *
+ * Features:
+ * - Real-time streaming of evaluation progress
+ * - OAuth 2.0 authentication support with fallback
+ * - Tool and resource discovery
+ * - Intelligent test scenario generation
+ * - High-level user task generation
+ */
+
 import { NextRequest } from "next/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -8,12 +22,26 @@ import {
   startAuthorization,
   exchangeAuthorization,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import type {
+  TestResult,
+  MCPTool,
+  TestScenario,
+  HighLevelTask,
+  EvaluationResult,
+  StreamLogger,
+} from "@/app/types/mcp-eval";
 
-// Custom console.log that sends messages to SSE stream
+/**
+ * Creates a logger that outputs to both console and SSE stream
+ *
+ * @param encoder - TextEncoder for converting strings to bytes
+ * @param controller - Stream controller for sending SSE messages
+ * @returns Logger object with log method
+ */
 function createLogger(
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>
-) {
+): StreamLogger {
   return {
     log: (message: string) => {
       console.log(message); // Still log to console
@@ -23,7 +51,18 @@ function createLogger(
   };
 }
 
-async function generateTestScenarios(tools: any[]) {
+/**
+ * Generates test scenarios for discovered MCP tools
+ *
+ * Uses GPT-5 Mini to analyze tools and create realistic test scenarios.
+ * Falls back to hardcoded scenarios if LLM fails.
+ *
+ * @param tools - Array of MCP tool definitions
+ * @returns Array of 2 test scenarios
+ */
+async function generateTestScenarios(
+  tools: MCPTool[]
+): Promise<TestScenario[]> {
   console.log(
     "🤖 Using LLM to analyze tools and generate realistic scenarios..."
   );
@@ -159,22 +198,32 @@ Example format:
         title: "Tool Discovery Test",
         description: "Test the most commonly used tools from this MCP server",
         expectedTools: ["create_projects", "list_projects", "create_testsets"],
-        complexity: "simple",
+        complexity: "simple" as const,
         category: "general",
       },
       {
         title: "Advanced Workflow Test",
         description: "Test complex tool interactions and data processing",
         expectedTools: ["get_data", "process_data", "export_results"],
-        complexity: "medium",
+        complexity: "medium" as const,
         category: "workflow",
       },
     ];
   }
 }
 
-// Generate high-level user tasks that reflect real end-user goals
-async function generateHighLevelUserTasks(tools: any[]) {
+/**
+ * Generates high-level user tasks based on discovered tools
+ *
+ * Creates user-centric tasks that represent real-world use cases
+ * rather than low-level tool testing.
+ *
+ * @param tools - Array of MCP tool definitions
+ * @returns Array of exactly 4 high-level tasks
+ */
+async function generateHighLevelUserTasks(
+  tools: MCPTool[]
+): Promise<HighLevelTask[]> {
   const toolsBrief = (tools || []).slice(0, 12).map((t: any) => ({
     name: t.name,
     description: t.description || "",
@@ -308,11 +357,22 @@ async function generateHighLevelUserTasks(tools: any[]) {
   return tasks.slice(0, 4);
 }
 
+/**
+ * Tests an MCP server without authentication
+ *
+ * Performs basic connectivity tests and tool discovery.
+ * If authentication is required, sets up OAuth flow.
+ *
+ * @param serverUrl - URL of the MCP server to test
+ * @param logger - Logger for streaming output
+ * @param request - Next.js request object for extracting host information
+ * @returns Evaluation result object
+ */
 async function testMCPServerWithCLI(
   serverUrl: string,
-  logger: any,
+  logger: StreamLogger,
   request: NextRequest
-) {
+): Promise<EvaluationResult> {
   const tests: any[] = [];
   const test1Start = Date.now();
 
@@ -570,8 +630,16 @@ async function testMCPServerWithCLI(
   }
 }
 
-// Generate intelligent test arguments based on tool schema and name
-function generateToolArguments(tool: any): any {
+/**
+ * Generates intelligent test arguments for a tool based on its schema
+ *
+ * Analyzes the tool's input schema and generates appropriate test values
+ * for each parameter based on property names and types.
+ *
+ * @param tool - MCP tool definition with input schema
+ * @returns Object containing test arguments for the tool
+ */
+function generateToolArguments(tool: MCPTool): any {
   let args: any = {};
 
   // If tool has input schema, generate based on properties
@@ -590,10 +658,21 @@ function generateToolArguments(tool: any): any {
   return args;
 }
 
+/**
+ * Generates a test value for a specific property based on its schema
+ *
+ * Uses intelligent heuristics based on property name and type to generate
+ * realistic test values.
+ *
+ * @param propName - Name of the property
+ * @param schema - JSON Schema definition for the property
+ * @param toolName - Name of the tool (unused but kept for compatibility)
+ * @returns Appropriate test value for the property
+ */
 function generateValueForProperty(
   propName: string,
   schema: any,
-  toolName: string
+  _toolName: string
 ): any {
   const name = propName.toLowerCase();
   const type = schema.type || "string";
@@ -655,12 +734,22 @@ function generateValueForProperty(
   return schema.default || null;
 }
 
+/**
+ * Generates fallback arguments when no schema is available
+ *
+ * Uses tool name patterns to guess appropriate arguments.
+ *
+ * @param toolName - Name of the tool
+ * @param description - Optional tool description
+ * @returns Object with guessed test arguments
+ */
 function generateFallbackArguments(
   toolName: string,
   description?: string
 ): any {
   const name = toolName.toLowerCase();
-  const desc = (description || "").toLowerCase();
+  // Note: description parameter is kept for API compatibility but not currently used
+  void description; // Mark as intentionally unused
 
   // Generate arguments based on common tool patterns
   if (
@@ -728,14 +817,31 @@ function generateFallbackArguments(
   return {};
 }
 
+/**
+ * Tests an MCP server with OAuth authentication
+ *
+ * Performs comprehensive testing after OAuth authentication:
+ * 1. Exchanges auth code for tokens
+ * 2. Connects with authentication
+ * 3. Discovers and tests tools
+ * 4. Discovers resources
+ *
+ * @param serverUrl - URL of the MCP server
+ * @param authCode - OAuth authorization code
+ * @param clientInfo - OAuth client information
+ * @param codeVerifier - PKCE code verifier
+ * @param logger - Logger for streaming output
+ * @param request - Next.js request object
+ * @returns Evaluation result object
+ */
 async function testMCPServerWithAuthentication(
   serverUrl: string,
   authCode: string,
   clientInfo: any,
   codeVerifier: string,
-  logger: any,
+  logger: StreamLogger,
   request: NextRequest
-) {
+): Promise<EvaluationResult> {
   const tests: any[] = [];
   logger.log("🔐 Starting authenticated MCP server evaluation...");
 
@@ -792,6 +898,8 @@ async function testMCPServerWithAuthentication(
     });
 
     // Create OAuth provider with the tokens
+    // This provider is used for authenticated transport but doesn't
+    // need full OAuth flow capabilities since auth is already complete
     const oauthProvider = {
       redirectUrl: `${baseUrl}/api/mcp-auth-callback`,
       clientMetadata: {
@@ -802,7 +910,8 @@ async function testMCPServerWithAuthentication(
         response_types: ["code"],
         scope: "openid",
       },
-      clientInformation: clientInfo,
+      // Return client info as a function as expected by SDK
+      clientInformation: () => clientInfo,
       tokens: () => tokens,
       codeVerifier: () => codeVerifier,
       getAuthHeader: () => `Bearer ${tokens.access_token}`,
@@ -812,14 +921,14 @@ async function testMCPServerWithAuthentication(
       finishAuthFlow: async () => {
         throw new Error("Auth flow already completed");
       },
-      saveTokens: async (tokens: any) => {
-        /* Already have tokens */
+      saveTokens: async (_tokens: any) => {
+        // Already have tokens, no need to save
       },
-      redirectToAuthorization: (url: URL) => {
+      redirectToAuthorization: (_url: URL) => {
         throw new Error("Auth flow already completed");
       },
-      saveCodeVerifier: (verifier: string) => {
-        /* Already have code verifier */
+      saveCodeVerifier: (_verifier: string) => {
+        // Already have code verifier, no need to save
       },
     };
 
@@ -999,7 +1108,22 @@ async function testMCPServerWithAuthentication(
   };
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * GET endpoint for streaming MCP server evaluation
+ *
+ * Uses Server-Sent Events to stream evaluation progress in real-time.
+ * Supports both authenticated and unauthenticated evaluation.
+ *
+ * Query parameters:
+ * - serverUrl: URL of the MCP server to evaluate (required)
+ * - authCode: OAuth authorization code (optional)
+ * - clientInfo: Stored OAuth client information (optional)
+ * - codeVerifier: Stored PKCE code verifier (optional)
+ *
+ * @param request - Next.js request object
+ * @returns SSE stream with evaluation progress and results
+ */
+export async function GET(request: NextRequest): Promise<Response> {
   const { searchParams } = new URL(request.url);
   const serverUrl = searchParams.get("serverUrl");
   const authCode = searchParams.get("authCode");

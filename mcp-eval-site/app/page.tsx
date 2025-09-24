@@ -1,29 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Zap, TestTube, ChevronRight, ChevronDown } from "lucide-react";
+import { Search, Zap, ChevronRight, ChevronDown } from "lucide-react";
+import type { EvaluationResult } from "@/app/types/mcp-eval";
 
-type TestResult = {
-  name: string;
-  passed: boolean;
-  message: string;
-  duration?: number;
-  details?: any;
-};
-
-type EvalResults = {
-  serverUrl: string;
-  overallPassed: number;
-  totalTests: number;
-  tests: TestResult[];
-  timestamp: Date;
-};
-
+// Auto-evaluation results type (not yet implemented)
 type AutoEvalResults = {
   type: "auto-eval";
   serverUrl: string;
   timestamp: Date;
-  discoveredTools: Array<{ name: string; description: string }>;
+  discoveredTools: Array<{ name: string; description?: string }>;
   generatedTasks: Array<{
     id: string;
     title: string;
@@ -59,10 +45,14 @@ type AutoEvalResults = {
 export default function Home() {
   const [serverUrl, setServerUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<EvalResults | null>(null);
+  const [results, setResults] = useState<EvaluationResult | null>(null);
   const [autoResults, setAutoResults] = useState<AutoEvalResults | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [authRequired, setAuthRequired] = useState<any>(null);
+  const [authRequired, setAuthRequired] = useState<{
+    oauthUrl?: string;
+    clientInfo?: any;
+    codeVerifier?: string;
+  } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [compact, setCompact] = useState(true);
   const [showAllScenarios, setShowAllScenarios] = useState(false);
@@ -257,7 +247,12 @@ export default function Home() {
         "mcp-eval-client-info",
         JSON.stringify(authRequired.clientInfo)
       );
-      localStorage.setItem("mcp-eval-code-verifier", authRequired.codeVerifier);
+      if (authRequired.codeVerifier) {
+        localStorage.setItem(
+          "mcp-eval-code-verifier",
+          authRequired.codeVerifier
+        );
+      }
 
       console.log("Storing OAuth state for callback:", {
         clientInfo: !!authRequired.clientInfo,
@@ -468,7 +463,7 @@ export default function Home() {
                   type="text"
                   value={serverUrl}
                   onChange={(e) => setServerUrl(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyPress}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-500 text-sm"
                   placeholder="Enter MCP server URL"
                 />
@@ -807,7 +802,7 @@ export default function Home() {
               type="text"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder="Enter MCP server URL"
               className="w-full pl-12 pr-4 py-3 text-lg border border-gray-300 rounded-full shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 hover:shadow-md transition-shadow"
               disabled={loading}
