@@ -1,24 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const code = searchParams.get('code')
-  const state = searchParams.get('state')
-  const error = searchParams.get('error')
+  const searchParams = request.nextUrl.searchParams;
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const error = searchParams.get("error");
 
-  if (error) {
-    return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(error)}`, request.url))
+  // Try to extract server URL from state parameter
+  let serverUrl: string | null = null;
+  if (state) {
+    try {
+      const stateData = JSON.parse(Buffer.from(state, "base64").toString());
+      serverUrl = stateData.serverUrl;
+    } catch (e) {
+      console.error("Failed to parse state parameter:", e);
+    }
   }
 
-  if (!code) {
-    return NextResponse.redirect(new URL('/?error=no_code', request.url))
+  const redirectUrl = new URL("/results", request.url);
+  if (serverUrl) {
+    redirectUrl.searchParams.set("url", serverUrl);
   }
 
-  // Store the authorization code temporarily
-  // In a real app, you'd exchange this for tokens
-  const redirectUrl = new URL('/', request.url)
-  redirectUrl.searchParams.set('auth_code', code)
-  redirectUrl.searchParams.set('state', state || '')
+  if (error || !code) {
+    redirectUrl.searchParams.set("error", error || "no_code");
+  } else {
+    // Store the authorization code and server URL
+    redirectUrl.searchParams.set("auth_code", code);
+    redirectUrl.searchParams.set("state", state || "");
+  }
 
-  return NextResponse.redirect(redirectUrl)
+  return NextResponse.redirect(redirectUrl);
 }

@@ -5,6 +5,9 @@ node_modules/
 .next/
 out/
 
+# TypeScript
+*.tsbuildinfo
+
 # Environment variables
 .env.local
 
@@ -13,3 +16,5 @@ out/
 
 # OS
 .DS_Store
+
+.claude
