@@ -41,10 +41,6 @@ export interface TestResultDetails {
   toolNames?: string[];
   /** Full tool definitions from MCP server */
   tools?: MCPTool[];
-  /** Generated test scenarios */
-  scenarios?: TestScenario[];
-  /** High-level user tasks */
-  tasks?: HighLevelTask[];
   /** HTTP status code */
   status?: number;
   /** HTTP headers */
@@ -83,34 +79,6 @@ export interface MCPTool {
 }
 
 /**
- * Represents a test scenario for evaluating MCP tools
- */
-export interface TestScenario {
-  /** Brief title of the scenario */
-  title: string;
-  /** Detailed description of what the scenario tests */
-  description: string;
-  /** List of tool names expected to be used in this scenario */
-  expectedTools: string[];
-  /** Complexity level of the scenario */
-  complexity: "simple" | "medium" | "complex";
-  /** Category of the test scenario */
-  category: string;
-}
-
-/**
- * Represents a high-level user task
- */
-export interface HighLevelTask {
-  /** Task title */
-  title: string;
-  /** Task description */
-  description: string;
-  /** Expected tools to complete the task */
-  expectedTools: string[];
-}
-
-/**
  * OAuth flow result containing all necessary information for authentication
  */
 export interface OAuthFlowResult {
@@ -132,10 +100,6 @@ export interface OAuthFlowResult {
 export interface EvaluationResult {
   /** URL of the evaluated MCP server */
   serverUrl: string;
-  /** Number of tests that passed */
-  overallPassed: number;
-  /** Total number of tests executed */
-  totalTests: number;
   /** Array of individual test results */
   tests: TestResult[];
   /** ISO timestamp of when the evaluation was performed */
