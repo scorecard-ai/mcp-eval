@@ -73,20 +73,39 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 py-4">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <div className="flex justify-center gap-6 text-sm text-gray-600">
-            <a href="#" className="hover:underline">
-              About
-            </a>
-            <a href="#" className="hover:underline">
-              Documentation
-            </a>
-            <a href="#" className="hover:underline">
-              GitHub
-            </a>
-            <a href="#" className="hover:underline">
-              Privacy
-            </a>
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex justify-center gap-6 text-sm text-gray-600">
+              <a href="#" className="hover:underline">
+                About
+              </a>
+              <a href="https://github.com/scorecard-ai/mcp-eval#documentation" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                Documentation
+              </a>
+              <a href="https://github.com/scorecard-ai/mcp-eval" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                GitHub
+              </a>
+              <a href="https://discord.gg/keUXXXdR" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                Discord
+              </a>
+              <a href="#" className="hover:underline">
+                Privacy
+              </a>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Powered by</span>
+              <a
+                href="https://scorecard.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-gray-700 hover:text-blue-600 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                Scorecard AI
+              </a>
+            </div>
           </div>
         </div>
       </footer>
