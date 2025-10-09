@@ -11,6 +11,7 @@ interface TestDetailsProps {
   onRequestExecute: (test: TestResult) => void;
   isExecuting: boolean;
   executionResult?: any;
+  prerequisites?: string[];
 }
 
 export default function TestDetails({
@@ -21,6 +22,7 @@ export default function TestDetails({
   onRequestExecute,
   isExecuting,
   executionResult,
+  prerequisites,
 }: TestDetailsProps) {
   const showExecutionButton =
     test.details?.requiresPermission && !test.details?.executed;
@@ -84,6 +86,11 @@ export default function TestDetails({
         )}
         {test.details && (
           <>
+            {prerequisites && prerequisites.length > 0 && (
+              <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                💡 <strong>Tip:</strong> Execute <span className="font-mono">{prerequisites.join(", ")}</span> first to auto-populate required fields
+              </div>
+            )}
             {showExecutionButton && (
               <div className="mt-3">
                 <button
