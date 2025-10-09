@@ -9,7 +9,8 @@ out/
 *.tsbuildinfo
 
 # Environment variables
-.env.local
+.env*
+!.env.example
 
 # Logs
 *.log
