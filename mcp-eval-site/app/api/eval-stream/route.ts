@@ -128,11 +128,7 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
   const discoveredTools = Array.from(new Set(toolNames)).sort();
   const hasAnyTools = discoveredTools.length > 0;
 
-  const chatGptRequirements = ["search", "fetch"];
-  const chatGptMissing = chatGptRequirements.filter(
-    (req) => !toolNameSet.has(req)
-  );
-
+  // Cursor looks for workspace/file-oriented tools
   const cursorKeywords = ["file", "workspace", "project", "repo", "read", "write"];
   const cursorTools = tools
     .filter((tool) =>
@@ -144,11 +140,18 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
 
   const compatibility = [
     {
-      client: "Claude",
+      client: "OpenAI (App SDK)",
+      compatible: hasAnyTools,
+      reason: hasAnyTools
+        ? "Server exposes tools compatible with OpenAI's MCP integration"
+        : "No tools discovered; OpenAI App SDK requires tools to be exposed",
+    },
+    {
+      client: "Claude.ai",
       compatible: hasAnyTools,
       reason: hasAnyTools
         ? "Server exposes at least one tool via listTools"
-        : "No tools discovered; Claude clients need tools to be exposed",
+        : "No tools discovered; Claude.ai needs tools to be exposed",
     },
     {
       client: "Cursor",
@@ -158,15 +161,6 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
           ? `Found workspace-oriented tools (${cursorTools.join(", ")})`
           : "No workspace or file tools detected; Cursor integrations typically rely on these",
     },
-    {
-      client: "ChatGPT",
-      compatible: chatGptMissing.length === 0,
-      reason:
-        chatGptMissing.length === 0
-          ? "Required 'search' and 'fetch' tools are present"
-          : `Missing required tools: ${chatGptMissing.join(", ")}`,
-      requirements: chatGptRequirements,
-    },
   ];
 
   const incompatibleClients = compatibility
@@ -175,7 +169,7 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
 
   const message =
     incompatibleClients.length === 0
-      ? "Compatible with Claude, Cursor, and ChatGPT"
+      ? "Compatible with OpenAI, Claude.ai, and Cursor"
       : `Potential issues detected for ${incompatibleClients.join(", ")}`;
 
   return {

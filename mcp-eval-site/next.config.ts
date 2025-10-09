@@ -10,7 +10,7 @@ export default withSentryConfig(nextConfig, {
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
   org: process.env.SENTRY_ORG || "scorecard",
-  project: process.env.SENTRY_PROJECT || "mcp",
+  project: process.env.SENTRY_PROJECT || "mcp-eval",
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,

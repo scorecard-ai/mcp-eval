@@ -9,7 +9,7 @@ const sentryEnvironment = getSentryEnvironment();
 const isLocalDevelopment = sentryEnvironment === "development";
 
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "https://6373b6fe2abdeb7250303320bbe9154c@o4509794827894784.ingest.us.sentry.io/4509994280026112",
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "https://f9bdf78c886c927c9b0482d18110ec77@o4509794827894784.ingest.us.sentry.io/4510160526049280",
   environment: sentryEnvironment,
   enabled: !isLocalDevelopment,
 
@@ -31,7 +31,7 @@ Sentry.init({
   // Define how likely Replay events are sampled.
   // This sets the sample rate to be 100%. You may want this to be 100% while
   // in development and sample at a lower rate in production
-  replaysSessionSampleRate: 0.1,
+  replaysSessionSampleRate: 1.0,
 
   // Define how likely Replay events are sampled when an error occurs.
   replaysOnErrorSampleRate: 1.0,

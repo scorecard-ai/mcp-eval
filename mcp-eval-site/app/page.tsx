@@ -34,6 +34,9 @@ export default function Home() {
           <h1 className="text-6xl font-normal text-gray-900 mb-8 tracking-tight">
             MCP Eval
           </h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Evaluate and test Model Context Protocol (MCP) servers with automated tool execution and validation
+          </p>
         </div>
 
         {/* Google-style search box */}
