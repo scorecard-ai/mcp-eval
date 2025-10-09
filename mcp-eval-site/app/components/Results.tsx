@@ -1,9 +1,10 @@
 "use client";
 
-import { Search, PlayCircle, AlertTriangle, Link, Check } from "lucide-react";
+import { Search, PlayCircle, AlertTriangle, Link, Check, ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { EvaluationResult } from "@/app/types/mcp-eval";
 import TestDetails from "./TestDetails";
+import NextLink from "next/link";
 
 interface ResultsProps {
   results: EvaluationResult;
@@ -33,6 +34,8 @@ export default function Results({
     description: string;
     arguments: any;
   } | null>(null);
+  const [editedArguments, setEditedArguments] = useState<string>("");
+  const [argumentsError, setArgumentsError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
 
@@ -219,6 +222,9 @@ export default function Results({
       description: test.details.description,
       arguments: sampleArguments,
     });
+    // Initialize edited arguments with formatted JSON
+    setEditedArguments(JSON.stringify(sampleArguments, null, 2));
+    setArgumentsError(null);
   }
 
   async function runToolExecution(
@@ -276,13 +282,24 @@ export default function Results({
   async function handleToolExecution(approved: boolean) {
     if (!showPermissionDialog || !approved) {
       setShowPermissionDialog(null);
+      setArgumentsError(null);
       return;
     }
 
-    const { testName, toolName, arguments: toolArgs } = showPermissionDialog;
-    setShowPermissionDialog(null);
+    // Parse and validate the edited arguments
+    let parsedArgs;
+    try {
+      parsedArgs = JSON.parse(editedArguments);
+    } catch (error) {
+      setArgumentsError("Invalid JSON: " + (error instanceof Error ? error.message : "Unable to parse"));
+      return;
+    }
 
-    await runToolExecution(testName, toolName, toolArgs);
+    const { testName, toolName } = showPermissionDialog;
+    setShowPermissionDialog(null);
+    setArgumentsError(null);
+
+    await runToolExecution(testName, toolName, parsedArgs);
   }
 
   async function executeAllTools() {
@@ -354,6 +371,13 @@ export default function Results({
       {/* Simple header for results */}
       <div className="border-b border-gray-200 py-4">
         <div className="max-w-4xl mx-auto px-6 flex items-center gap-4">
+          <NextLink 
+            href="/"
+            className="text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-2"
+            title="Back to home"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </NextLink>
           <span>MCP Eval</span>
           <div className="flex-1 max-w-lg">
             <div className="relative">
@@ -392,10 +416,19 @@ export default function Results({
               <div className="text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto pr-2">
                 {showPermissionDialog.description}
               </div>
-              <p className="text-xs text-gray-500 mb-2">Arguments:</p>
-              <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-auto max-h-32">
-                {JSON.stringify(showPermissionDialog.arguments, null, 2)}
-              </pre>
+              <p className="text-xs text-gray-500 mb-2">Arguments (editable):</p>
+              <textarea
+                value={editedArguments}
+                onChange={(e) => {
+                  setEditedArguments(e.target.value);
+                  setArgumentsError(null);
+                }}
+                className="w-full text-xs bg-white border border-gray-200 rounded p-2 overflow-auto max-h-32 min-h-[8rem] font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                spellCheck={false}
+              />
+              {argumentsError && (
+                <p className="text-xs text-red-600 mt-1">{argumentsError}</p>
+              )}
             </div>
 
             <div className="flex gap-3 justify-end">
