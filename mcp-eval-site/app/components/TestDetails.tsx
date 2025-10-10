@@ -94,11 +94,6 @@ export default function TestDetails({
           <h3 className="text-base text-blue-600 mb-0.5 group-hover:underline select-none">
             {test.name}
           </h3>
-          {hasRegeneratedArgs && (
-            <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded" title="Arguments enhanced with execution context">
-              ✨ Regenerated Dataset
-            </span>
-          )}
         </div>
       </summary>
       <div className="mt-2 ml-5">
