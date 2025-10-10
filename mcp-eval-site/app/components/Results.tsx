@@ -60,18 +60,33 @@ export default function Results({
     (test) => test.details?.requiresPermission
   );
 
-  // Debug: Log execution context changes
-  useEffect(() => {
-    console.log('📊 [EXECUTION CONTEXT UPDATE]', {
-      size: executionContext.size,
-      keys: Array.from(executionContext.keys()),
-      data: Array.from(executionContext.entries()).map(([key, value]) => ({
-        tool: key,
-        hasResult: !!value.result,
-        responseFields: value.responseFields,
-      })),
-    });
-  }, [executionContext]);
+  // Extract search term from MCP URL for Smithery
+  function extractSmitherySearchTerm(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      
+      // Remove common MCP subdomains (mcp., api., etc.)
+      let cleaned = hostname.replace(/^(mcp|api|server)\./i, '');
+      
+      // Remove TLD (.com, .io, .dev, .ai, etc.)
+      cleaned = cleaned.replace(/\.(com|io|dev|ai|net|org|co)$/i, '');
+      
+      // Remove www if present
+      cleaned = cleaned.replace(/^www\./i, '');
+      
+      // If there are still dots, take the last part (e.g., scorecard.io -> scorecard)
+      const parts = cleaned.split('.');
+      const searchTerm = parts[parts.length - 1];
+      
+      return searchTerm || 'mcp';
+    } catch {
+      return 'mcp';
+    }
+  }
+
+  const smitherySearchTerm = extractSmitherySearchTerm(serverUrl);
+
 
   useEffect(() => {
     setOpenSections({});
@@ -1414,24 +1429,39 @@ export default function Results({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 mb-4">
-          <button
-            onClick={handleShare}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Link className="w-4 h-4" />
-                Copy link
-              </>
-            )}
-          </button>
-          <button
+        <div className="flex justify-between gap-2 mb-4">
+          <div className="flex gap-2">
+            <button
+              onClick={handleShare}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Link className="w-4 h-4" />
+                  Copy link
+                </>
+              )}
+            </button>
+            <a
+              href={`https://smithery.ai/search?q=${encodeURIComponent(smitherySearchTerm)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+              title={`Search for "${smitherySearchTerm}" on Smithery`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Find on Smithery
+            </a>
+          </div>
+          <div className="flex gap-2">
+            <button
             onClick={executeAllTools}
             disabled={
               !hasExecutableTools || executingAll || executingTools.size > 0
@@ -1472,6 +1502,7 @@ export default function Results({
               )}
             </button>
           )}
+          </div>
         </div>
         <div className="space-y-3">
           {results.tests.map((test, index) => {
@@ -1701,12 +1732,6 @@ export default function Results({
                   <p className="text-sm text-gray-600">
                     Contact us to set up automated MCP evaluations in your CI/CD pipeline
                   </p>
-                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    Beta
-                  </div>
                   <div className="mt-3 flex items-center gap-2 text-sm font-medium text-purple-600 group-hover:gap-3 transition-all">
                     <span>Contact us</span>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
