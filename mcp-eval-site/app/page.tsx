@@ -141,10 +141,10 @@ export default function Home() {
             {/* Lighthouse-style metrics with donuts */}
             <div className="bg-slate-50 px-8 py-10">
               <div className="flex justify-center items-center gap-10 flex-wrap">
-                <DonutChart score={100} label="Performance" size={112} strokeWidth={8} />
-                <DonutChart score={94} label="Reliability" size={112} strokeWidth={8} />
-                <DonutChart score={100} label="Best Practices" size={112} strokeWidth={8} />
-                <DonutChart score={87} label="Compatibility" size={112} strokeWidth={8} />
+                <DonutChart score={100} label="Test Pass Rate" size={112} strokeWidth={8} />
+                <DonutChart score={94} label="Tool Execution" size={112} strokeWidth={8} />
+                <DonutChart score={100} label="Resource Discovery" size={112} strokeWidth={8} />
+                <DonutChart score={87} label="Client Support" size={112} strokeWidth={8} />
               </div>
             </div>
 

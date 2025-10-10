@@ -1335,7 +1335,7 @@ export default function Results({
             <div className="flex justify-center items-center gap-10 flex-wrap">
               <DonutChart 
                 score={scorecard.tests.passRate ?? 0} 
-                label="Performance" 
+                label="Test Pass Rate" 
                 size={112} 
                 strokeWidth={8} 
               />
@@ -1344,7 +1344,7 @@ export default function Results({
                   ? Math.round((scorecard.tests.passed / scorecard.tests.executed) * 100)
                   : 0
                 } 
-                label="Reliability" 
+                label="Tool Execution" 
                 size={112} 
                 strokeWidth={8} 
               />
@@ -1352,7 +1352,7 @@ export default function Results({
                 score={scorecard.resources.status === "Success" ? 100 
                   : scorecard.resources.status === "Failed" ? 0 : 50
                 } 
-                label="Best Practices" 
+                label="Resource Discovery" 
                 size={112} 
                 strokeWidth={8} 
               />
@@ -1362,7 +1362,7 @@ export default function Results({
                     scorecard.compatibility.entries.length) * 100)
                   : 0
                 } 
-                label="Compatibility" 
+                label="Client Support" 
                 size={112} 
                 strokeWidth={8} 
               />
