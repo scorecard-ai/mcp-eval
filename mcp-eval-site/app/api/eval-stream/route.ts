@@ -121,7 +121,7 @@ RULES:
 Return ONLY valid JSON matching the schema.`;
 
     const { text } = await generateText({
-      model: openai("gpt-4o-mini"),
+      model: openai("gpt-5"),
       system: "You are a JSON generator that only outputs valid JSON without any markdown formatting or explanations.",
       prompt,
       temperature: 0.3,
