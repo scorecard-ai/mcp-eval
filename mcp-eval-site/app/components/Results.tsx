@@ -33,6 +33,7 @@ export default function Results({
     toolName: string;
     description: string;
     arguments: any;
+    inputSchema?: any;
     autoPopulatedFields?: string[];
     missingDependencies?: string[];
     invalidFields?: string[];
@@ -43,6 +44,7 @@ export default function Results({
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isRegeneratingSingle, setIsRegeneratingSingle] = useState(false);
   // Store regenerated arguments for tools (overrides original sampleArguments)
   const [regeneratedArguments, setRegeneratedArguments] = useState<Map<string, any>>(new Map());
   // Execution context to track all successful tool responses with metadata
@@ -709,6 +711,7 @@ export default function Results({
       toolName,
       description: test.details.description,
       arguments: args,
+      inputSchema: inputSchema,
       autoPopulatedFields: autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined,
       missingDependencies: missingDependencies.length > 0 ? missingDependencies : undefined,
       invalidFields: invalidFields.length > 0 ? invalidFields : undefined,
@@ -971,6 +974,87 @@ export default function Results({
     }
   }
 
+  async function regenerateSingleTool(toolName: string, description: string, inputSchema: any) {
+    if (executionContext.size === 0) {
+      alert("No execution context available. Run some tools first to build context.");
+      return;
+    }
+
+    setIsRegeneratingSingle(true);
+
+    try {
+      // Convert executionContext Map to plain object for JSON serialization
+      const contextObj: Record<string, any> = {};
+      executionContext.forEach((value, key) => {
+        contextObj[key] = value;
+      });
+
+      console.log(`[regenerateSingleTool] Regenerating ${toolName} with ${executionContext.size} context(s)`);
+
+      const response = await fetch("/api/regenerate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tools: [{
+            name: toolName,
+            description: description,
+            inputSchema: inputSchema,
+          }],
+          serverUrl: serverUrl,
+          executionContext: contextObj,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.arguments[toolName]) {
+        console.log(`[regenerateSingleTool] Successfully regenerated for ${toolName}:`, result.arguments[toolName]);
+        
+        // Update regenerated arguments state
+        setRegeneratedArguments((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(toolName, result.arguments[toolName]);
+          return newMap;
+        });
+        
+        // Apply auto-population to the regenerated args
+        const { args } = autoPopulateArguments(
+          result.arguments[toolName],
+          inputSchema || {}
+        );
+        
+        // Update the edited arguments in the dialog
+        setEditedArguments(JSON.stringify(args, null, 2));
+        setArgumentsError(null);
+        
+        // Don't show alert since user is actively looking at the dialog
+        console.log(`✅ Arguments regenerated using ${result.contextUsed} execution context${result.contextUsed > 1 ? 's' : ''}`);
+        
+        // Update the dialog state to remove warnings now that args are regenerated
+        if (showPermissionDialog) {
+          const { autoPopulatedFields } = autoPopulateArguments(
+            result.arguments[toolName],
+            inputSchema || {}
+          );
+          setShowPermissionDialog({
+            ...showPermissionDialog,
+            arguments: args,
+            autoPopulatedFields: autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined,
+            missingDependencies: undefined, // Clear since we regenerated
+            invalidFields: undefined, // Clear since we regenerated
+          });
+        }
+      } else {
+        alert(`Regeneration failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error("Single tool regeneration error:", error);
+      alert("Failed to regenerate. Check console for details.");
+    } finally {
+      setIsRegeneratingSingle(false);
+    }
+  }
+
   async function handleShare() {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -1119,19 +1203,49 @@ export default function Results({
               )}
             </div>
 
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => handleToolExecution(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleToolExecution(true)}
-                className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
-              >
-                Execute Tool
-              </button>
+            <div className="flex gap-3 justify-between">
+              {executionContext.size > 0 && showPermissionDialog && (
+                <button
+                  onClick={() => {
+                    regenerateSingleTool(
+                      showPermissionDialog.toolName,
+                      showPermissionDialog.description || '',
+                      showPermissionDialog.inputSchema
+                    );
+                  }}
+                  disabled={isRegeneratingSingle}
+                  className="px-4 py-2 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  title={`Regenerate arguments using ${executionContext.size} execution context${executionContext.size > 1 ? 's' : ''}`}
+                >
+                  {isRegeneratingSingle ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Smart Regenerate ({executionContext.size})
+                    </>
+                  )}
+                </button>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleToolExecution(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleToolExecution(true)}
+                  className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+                >
+                  Execute Tool
+                </button>
+              </div>
             </div>
           </div>
         </div>
