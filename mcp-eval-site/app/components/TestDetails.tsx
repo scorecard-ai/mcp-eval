@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { PlayCircle } from "lucide-react";
 import type { TestResult } from "@/app/types/mcp-eval";
 
@@ -12,6 +13,8 @@ interface TestDetailsProps {
   isExecuting: boolean;
   executionResult?: any;
   prerequisites?: string[];
+  hasRegeneratedArgs?: boolean;
+  autoPopulatedFields?: string[];
 }
 
 export default function TestDetails({
@@ -23,7 +26,20 @@ export default function TestDetails({
   isExecuting,
   executionResult,
   prerequisites,
+  hasRegeneratedArgs,
+  autoPopulatedFields,
 }: TestDetailsProps) {
+  // Debug: Log props received
+  useEffect(() => {
+    if (test.details?.toolName && test.details?.requiresPermission) {
+      console.log(`🎨 [TestDetails] Rendering ${test.details.toolName}`, {
+        autoPopulatedFields,
+        hasRegeneratedArgs,
+        sampleArguments: test.details.sampleArguments,
+      });
+    }
+  }, [autoPopulatedFields, hasRegeneratedArgs, test.details?.sampleArguments, test.details?.toolName, test.details?.requiresPermission]);
+
   const showExecutionButton =
     test.details?.requiresPermission && !test.details?.executed;
 
@@ -74,9 +90,16 @@ export default function TestDetails({
         <div
           className={`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${statusClass}`}
         />
-        <h3 className="text-base text-blue-600 mb-0.5 group-hover:underline select-none">
-          {test.name}
-        </h3>
+        <div className="flex items-center gap-2 flex-1">
+          <h3 className="text-base text-blue-600 mb-0.5 group-hover:underline select-none">
+            {test.name}
+          </h3>
+          {hasRegeneratedArgs && (
+            <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded" title="Arguments enhanced with execution context">
+              ✨ Regenerated Dataset
+            </span>
+          )}
+        </div>
       </summary>
       <div className="mt-2 ml-5">
         {test.message && (
@@ -86,6 +109,11 @@ export default function TestDetails({
         )}
         {test.details && (
           <>
+            {autoPopulatedFields && autoPopulatedFields.length > 0 && (
+              <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-800">
+                ✅ <strong>Auto-populated:</strong> <span className="font-mono">{autoPopulatedFields.join(", ")}</span> from execution context
+              </div>
+            )}
             {prerequisites && prerequisites.length > 0 && (
               <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                 💡 <strong>Tip:</strong> Execute <span className="font-mono">{prerequisites.join(", ")}</span> first to auto-populate required fields

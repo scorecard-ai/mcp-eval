@@ -33,6 +33,7 @@ export default function Results({
     toolName: string;
     description: string;
     arguments: any;
+    inputSchema?: any;
     autoPopulatedFields?: string[];
     missingDependencies?: string[];
     invalidFields?: string[];
@@ -42,17 +43,50 @@ export default function Results({
   const [argumentsError, setArgumentsError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isRegeneratingSingle, setIsRegeneratingSingle] = useState(false);
+  // Store regenerated arguments for tools (overrides original sampleArguments)
+  const [regeneratedArguments, setRegeneratedArguments] = useState<Map<string, any>>(new Map());
   // Execution context to track all successful tool responses with metadata
   const [executionContext, setExecutionContext] = useState<Map<string, {
     result: any;
     description?: string;
     responseSchema?: any;
     responseFields?: string[];
+    inferredOutputSchema?: any;
   }>>(new Map());
 
   const hasExecutableTools = results.tests.some(
     (test) => test.details?.requiresPermission
   );
+
+  // Extract search term from MCP URL for Smithery
+  function extractSmitherySearchTerm(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      
+      // Remove common MCP subdomains (mcp., api., etc.)
+      let cleaned = hostname.replace(/^(mcp|api|server)\./i, '');
+      
+      // Remove TLD (.com, .io, .dev, .ai, etc.)
+      cleaned = cleaned.replace(/\.(com|io|dev|ai|net|org|co)$/i, '');
+      
+      // Remove www if present
+      cleaned = cleaned.replace(/^www\./i, '');
+      
+      // If there are still dots, take the last part (e.g., scorecard.io -> scorecard)
+      const parts = cleaned.split('.');
+      const searchTerm = parts[parts.length - 1];
+      
+      return searchTerm || 'mcp';
+    } catch {
+      return 'mcp';
+    }
+  }
+
+  const smitherySearchTerm = extractSmitherySearchTerm(serverUrl);
+
 
   useEffect(() => {
     setOpenSections({});
@@ -235,11 +269,40 @@ export default function Results({
   // Helper function to extract prefix from ID field (handles both camelCase and snake_case)
   function extractIdPrefix(fieldName: string): string | null {
     // Match various ID patterns: project_id, projectId, project-id, etc.
-    const match = fieldName.match(/^(.+?)[-_]?[iI]d$/);
+    // Case-insensitive match for "id" suffix
+    const match = fieldName.match(/^(.+?)(?:[-_]?id|Id)$/i);
     if (match) {
       return match[1];
     }
     return null;
+  }
+
+  // Helper function to infer output schema from actual data
+  function inferOutputSchema(data: any): any {
+    if (data === null || data === undefined) return null;
+    
+    const type = Array.isArray(data) ? 'array' : typeof data;
+    
+    if (type === 'object' && !Array.isArray(data)) {
+      const properties: Record<string, any> = {};
+      for (const [key, value] of Object.entries(data)) {
+        properties[key] = inferOutputSchema(value);
+      }
+      return {
+        type: 'object',
+        properties,
+        required: Object.keys(data), // All present fields treated as required
+      };
+    }
+    
+    if (type === 'array' && data.length > 0) {
+      return {
+        type: 'array',
+        items: inferOutputSchema(data[0]),
+      };
+    }
+    
+    return { type };
   }
 
   // Helper function to parse response schema from tool description
@@ -343,6 +406,7 @@ export default function Results({
     
     // Extract prefix if this is an ID field (handles both camelCase and snake_case)
     const idPrefix = extractIdPrefix(fieldName);
+    console.log(`[findMatchingValue] 🔍 Extracted ID prefix from "${fieldName}": "${idPrefix}"`);
     
     for (const [toolName, contextEntry] of executionContext.entries()) {
       console.log(`[findMatchingValue] Checking tool: ${toolName}`);
@@ -350,11 +414,44 @@ export default function Results({
       
       // Get response schema fields if available
       const responseFields = contextEntry.responseFields || [];
+      console.log(`[findMatchingValue] Tool ${toolName} data type:`, typeof data, 'value:', data);
       console.log(`[findMatchingValue] Tool ${toolName} returns fields:`, responseFields);
       if (!data) continue;
 
+      // Priority 0: If response is a simple value (string/number) and tool name matches field, use it directly
+      if (idPrefix && (typeof data === 'string' || typeof data === 'number')) {
+        console.log(`[findMatchingValue] 🔍 Priority 0 check: Simple value detected for ${fieldName}`);
+        console.log(`[findMatchingValue] 🔍 idPrefix: "${idPrefix}", data: "${data}"`);
+        
+        const normalizedPrefix = normalizeForComparison(idPrefix);
+        const normalizedToolName = normalizeForComparison(toolName);
+        const toolBaseName = normalizedToolName.replace(/^(create|list|get|update|delete|upsert)/, '');
+        
+        console.log(`[findMatchingValue] 🔍 Normalized: prefix="${normalizedPrefix}", toolName="${normalizedToolName}", baseName="${toolBaseName}"`);
+        console.log(`[findMatchingValue] 🔍 Checking matches:`, {
+          toolNameIncludesPrefix: normalizedToolName.includes(normalizedPrefix),
+          baseNameEqualsPrefix: toolBaseName === normalizedPrefix,
+          prefixIncludesBaseName: normalizedPrefix.includes(toolBaseName),
+        });
+        
+        if (normalizedToolName.includes(normalizedPrefix) || 
+            toolBaseName === normalizedPrefix ||
+            normalizedPrefix.includes(toolBaseName)) {
+          console.log(`[findMatchingValue] ✅ Simple value match: ${fieldName} with ${toolName} -> ${data} (response is primitive)`);
+          if (!bestMatch || 0 < bestMatch.priority) {
+            bestMatch = {
+              value: data,
+              source: toolName,
+              priority: 0  // Highest priority
+            };
+          }
+        } else {
+          console.log(`[findMatchingValue] ❌ No match: tool name doesn't match field prefix`);
+        }
+      }
+
       // Priority 1: Direct exact field match (case-insensitive)
-      if (data[fieldName] !== undefined && data[fieldName] !== null) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && data[fieldName] !== undefined && data[fieldName] !== null) {
         console.log(`[findMatchingValue] Found direct match for ${fieldName}: ${data[fieldName]}`);
         if (!bestMatch || 1 < bestMatch.priority) {
           bestMatch = {
@@ -371,7 +468,7 @@ export default function Results({
         ? fieldName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()) // snake_case to camelCase
         : fieldName.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase(); // camelCase to snake_case
       
-      if (alternateFieldName !== fieldName && data[alternateFieldName] !== undefined && data[alternateFieldName] !== null) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && alternateFieldName !== fieldName && data[alternateFieldName] !== undefined && data[alternateFieldName] !== null) {
         console.log(`[findMatchingValue] Found alternate match ${alternateFieldName} for ${fieldName}: ${data[alternateFieldName]}`);
         if (!bestMatch || 2 < bestMatch.priority) {
           bestMatch = {
@@ -384,7 +481,7 @@ export default function Results({
 
       // Priority 3: Schema-aware ID field matching
       // Use response schema to verify the tool actually returns an 'id' field
-      if (idPrefix && responseFields.includes('id')) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && idPrefix && responseFields.includes('id')) {
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
         
@@ -415,7 +512,7 @@ export default function Results({
       }
       
       // Priority 4: ID field matching without schema verification (fallback)
-      else if (idPrefix) {
+      else if (typeof data === 'object' && data !== null && !Array.isArray(data) && idPrefix) {
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
         const toolBaseName = normalizedToolName.replace(/^(create|list|get|update|delete|upsert)/, '');
@@ -439,7 +536,7 @@ export default function Results({
       }
 
       // Priority 5: Check nested data structures (for list/paginated responses)
-      if (idPrefix && data.data && Array.isArray(data.data) && data.data.length > 0) {
+      if (typeof data === 'object' && data !== null && idPrefix && data.data && Array.isArray(data.data) && data.data.length > 0) {
         const firstItem = data.data[0];
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
@@ -524,14 +621,31 @@ export default function Results({
 
   // Function to detect if a value is a placeholder/invalid
   function isPlaceholderValue(value: any, fieldName: string, fieldSchema: any): boolean {
-    if (value === null || value === undefined) return true;
+    if (value === null || value === undefined || value === '') return true;
     
     // String placeholders
     if (typeof value === 'string') {
-      return value.startsWith('test-') || 
-             value === 'test_value' || 
-             value === 'Sample description for ' + fieldName ||
-             value.includes('sample_item');
+      // Common placeholder patterns
+      const placeholderPatterns = [
+        /^test-/i,                    // test-xxx
+        /^test_/i,                    // test_xxx
+        /^sample_/i,                  // sample_xxx
+        /^placeholder/i,              // placeholder
+        /^dummy/i,                    // dummy
+        /^example/i,                  // example
+        /^tmp/i,                      // tmp
+        /^12345678-1234-1234-1234/,  // default UUID pattern
+      ];
+      
+      // Exact matches
+      if (value === 'test_value' || 
+          value === 'Sample description for ' + fieldName ||
+          value.includes('sample_item')) {
+        return true;
+      }
+      
+      // Pattern matches
+      return placeholderPatterns.some(pattern => pattern.test(value));
     }
     
     // Empty objects/arrays
@@ -543,7 +657,11 @@ export default function Results({
     if (Array.isArray(value)) {
       return value.length === 0 || value.every(item => 
         item === 'sample_item' || 
-        (typeof item === 'string' && item.startsWith('test-'))
+        (typeof item === 'string' && (
+          item.startsWith('test-') || 
+          item.startsWith('test_') ||
+          item.startsWith('sample_')
+        ))
       );
     }
     
@@ -575,37 +693,45 @@ export default function Results({
       const isRequired = required.includes(fieldName);
       console.log(`[autoPopulateArguments] Processing field: ${fieldName}, required: ${isRequired}, current value:`, args[fieldName]);
       
-      // Check if this looks like an ID field that should be replaced (handles both camelCase and snake_case)
+      // Check if this looks like an ID field (handles both camelCase and snake_case)
       const idPrefix = extractIdPrefix(fieldName);
       const hasGenericValue = typeof args[fieldName] === 'string' && 
         (args[fieldName].startsWith('test-') || args[fieldName] === 'test_value');
       
       // Skip non-ID fields that already have real values
-      if (!idPrefix && args[fieldName] !== undefined && args[fieldName] !== null && args[fieldName] !== '') {
+      if (!idPrefix && args[fieldName] !== undefined && args[fieldName] !== null && args[fieldName] !== '' && !hasGenericValue) {
         console.log(`[autoPopulateArguments] Skipping ${fieldName} - already has non-ID value`);
         continue;
       }
       
-      // For ID fields or empty fields, try to find from execution context
+      // For ID fields or empty/placeholder fields, try to find from execution context
       if (idPrefix || !args[fieldName] || hasGenericValue) {
         // Try to find a matching value from execution context
         const match = findMatchingValue(fieldName, fieldSchema);
         
         if (match) {
-          console.log(`[autoPopulateArguments] Auto-populating ${fieldName} with value:`, match.value, '(replacing:', args[fieldName], ')');
+          console.log(`[autoPopulateArguments] Auto-populating ${fieldName} with value from execution:`, match.value, '(replacing:', args[fieldName], ')');
           args[fieldName] = match.value;
           autoPopulatedFields.push(fieldName);
-        } else if (isRequired && executionContext.size > 0 && idPrefix) {
-          console.log(`[autoPopulateArguments] Missing required ID field: ${fieldName}`);
-          // If it's a required ID field and we have context but couldn't find it, mark as missing
+        } else if (isRequired && executionContext.size > 0 && idPrefix && isPlaceholderValue(args[fieldName], fieldName, fieldSchema)) {
+          // Only mark as missing if it's required, we have context, it's an ID field, and value is placeholder
+          console.log(`[autoPopulateArguments] Missing required ID field: ${fieldName} (no match found)`);
           missingDependencies.push(fieldName);
+        } else {
+          console.log(`[autoPopulateArguments] No match for ${fieldName}, keeping current value:`, args[fieldName]);
         }
       }
     }
 
     // Check for invalid placeholder values in required fields
+    // Skip fields that were successfully auto-populated or already in missingDependencies
     for (const [fieldName, fieldSchema] of Object.entries(inputSchema.properties)) {
       const isRequired = required.includes(fieldName);
+      
+      // Skip if already auto-populated or marked as missing dependency
+      if (autoPopulatedFields.includes(fieldName) || missingDependencies.includes(fieldName)) {
+        continue;
+      }
       
       if (isRequired && isPlaceholderValue(args[fieldName], fieldName, fieldSchema)) {
         console.log(`[autoPopulateArguments] Field ${fieldName} has placeholder/invalid value:`, args[fieldName]);
@@ -623,9 +749,14 @@ export default function Results({
   async function executeToolWithPermission(test: any) {
     const { toolName, sampleArguments, inputSchema } = test.details;
 
-    // Auto-populate arguments from execution context
+    // Use regenerated arguments if available, otherwise use original sampleArguments
+    const baseArguments = regeneratedArguments.has(toolName) 
+      ? regeneratedArguments.get(toolName)
+      : sampleArguments;
+
+    // Auto-populate arguments from execution context (works on both original and regenerated args)
     const { args, autoPopulatedFields, missingDependencies, invalidFields } = autoPopulateArguments(
-      sampleArguments || {},
+      baseArguments || {},
       inputSchema || {}
     );
 
@@ -638,6 +769,7 @@ export default function Results({
       toolName,
       description: test.details.description,
       arguments: args,
+      inputSchema: inputSchema,
       autoPopulatedFields: autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined,
       missingDependencies: missingDependencies.length > 0 ? missingDependencies : undefined,
       invalidFields: invalidFields.length > 0 ? invalidFields : undefined,
@@ -696,14 +828,20 @@ export default function Results({
         const responseSchema = parseResponseSchema(description);
         const responseFields = extractSchemaFields(responseSchema);
         
+        // Infer output schema from actual data
+        const parsedData = extractResponseData(result);
+        const inferredSchema = inferOutputSchema(parsedData);
+        
         console.log('[runToolExecution] Parsed response schema fields:', responseFields);
+        console.log('[runToolExecution] Inferred output schema:', inferredSchema);
         
         setExecutionContext((prev) => {
           const newContext = new Map(prev).set(toolName, {
             result,
             description,
-            responseSchema,
-            responseFields
+            responseSchema: inferredSchema || responseSchema, // Prefer inferred schema
+            responseFields: inferredSchema ? Object.keys(inferredSchema.properties || {}) : responseFields,
+            inferredOutputSchema: inferredSchema,
           });
           console.log('[runToolExecution] New context size:', newContext.size);
           console.log('[runToolExecution] Context keys:', Array.from(newContext.keys()));
@@ -773,7 +911,8 @@ export default function Results({
     try {
       const executionPromises = testsToExecute.map(async (test) => {
         const toolName = test.details?.toolName;
-        const toolArgs = test.details?.sampleArguments;
+        const sampleArguments = test.details?.sampleArguments;
+        const inputSchema = test.details?.inputSchema;
 
         if (!toolName) {
           setToolResults((prev) =>
@@ -785,7 +924,12 @@ export default function Results({
           return;
         }
 
-        if (typeof toolArgs === "undefined") {
+        // Use regenerated arguments if available, otherwise use original sampleArguments
+        const baseArguments = regeneratedArguments.has(toolName) 
+          ? regeneratedArguments.get(toolName)
+          : sampleArguments;
+
+        if (typeof baseArguments === "undefined") {
           setToolResults((prev) =>
             new Map(prev).set(test.name, {
               success: false,
@@ -795,12 +939,177 @@ export default function Results({
           return;
         }
 
-        await runToolExecution(test.name, toolName, toolArgs);
+        // Auto-populate arguments from execution context
+        const { args } = autoPopulateArguments(
+          baseArguments || {},
+          inputSchema || {}
+        );
+
+        await runToolExecution(test.name, toolName, args);
       });
 
       await Promise.all(executionPromises);
     } finally {
       setExecutingAll(false);
+    }
+  }
+
+  async function regenerateTestsWithContext() {
+    if (executionContext.size === 0) {
+      alert("No execution context available. Run some tools first to build context.");
+      return;
+    }
+
+    // Find tools that haven't been executed yet
+    const unexecutedTools = results.tests
+      .filter((test) => {
+        const toolName = test.details?.toolName;
+        return toolName && !executionContext.has(toolName) && test.details?.requiresPermission;
+      })
+      .map((test) => ({
+        name: test.details!.toolName!,
+        description: test.details!.description,
+        inputSchema: test.details!.inputSchema,
+      }));
+
+    if (unexecutedTools.length === 0) {
+      alert("All tools have already been executed. No tests to regenerate.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Regenerate test arguments for ${unexecutedTools.length} tool${unexecutedTools.length > 1 ? 's' : ''} using execution context from ${executionContext.size} completed tool(s)?`
+    );
+
+    if (!confirmed) return;
+
+    setIsRegenerating(true);
+
+    try {
+      // Convert executionContext Map to plain object for JSON serialization
+      const contextObj: Record<string, any> = {};
+      executionContext.forEach((value, key) => {
+        contextObj[key] = value;
+      });
+
+      console.log('[regenerateTestsWithContext] Sending request with context:', Object.keys(contextObj));
+
+      const response = await fetch("/api/regenerate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tools: unexecutedTools,
+          serverUrl: serverUrl,
+          executionContext: contextObj,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('[regenerateTestsWithContext] Successfully regenerated arguments:', result.arguments);
+        
+        // Update regenerated arguments state
+        setRegeneratedArguments((prev) => {
+          const newMap = new Map(prev);
+          Object.entries(result.arguments).forEach(([toolName, args]) => {
+            newMap.set(toolName, args);
+          });
+          return newMap;
+        });
+        
+        alert(
+          `✅ Successfully regenerated arguments for ${unexecutedTools.length} tool${unexecutedTools.length > 1 ? 's' : ''} using ${result.contextUsed} execution context${result.contextUsed > 1 ? 's' : ''}!\n\nThe updated arguments will be used when you execute these tools.`
+        );
+      } else {
+        alert(`Regeneration failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Regeneration error:", error);
+      alert("Failed to regenerate tests. Check console for details.");
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
+
+  async function regenerateSingleTool(toolName: string, description: string, inputSchema: any) {
+    if (executionContext.size === 0) {
+      alert("No execution context available. Run some tools first to build context.");
+      return;
+    }
+
+    setIsRegeneratingSingle(true);
+
+    try {
+      // Convert executionContext Map to plain object for JSON serialization
+      const contextObj: Record<string, any> = {};
+      executionContext.forEach((value, key) => {
+        contextObj[key] = value;
+      });
+
+      console.log(`[regenerateSingleTool] Regenerating ${toolName} with ${executionContext.size} context(s)`);
+
+      const response = await fetch("/api/regenerate-tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tools: [{
+            name: toolName,
+            description: description,
+            inputSchema: inputSchema,
+          }],
+          serverUrl: serverUrl,
+          executionContext: contextObj,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.arguments[toolName]) {
+        console.log(`[regenerateSingleTool] Successfully regenerated for ${toolName}:`, result.arguments[toolName]);
+        
+        // Update regenerated arguments state
+        setRegeneratedArguments((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(toolName, result.arguments[toolName]);
+          return newMap;
+        });
+        
+        // Apply auto-population to the regenerated args
+        const { args } = autoPopulateArguments(
+          result.arguments[toolName],
+          inputSchema || {}
+        );
+        
+        // Update the edited arguments in the dialog
+        setEditedArguments(JSON.stringify(args, null, 2));
+        setArgumentsError(null);
+        
+        // Don't show alert since user is actively looking at the dialog
+        console.log(`✅ Arguments regenerated using ${result.contextUsed} execution context${result.contextUsed > 1 ? 's' : ''}`);
+        
+        // Update the dialog state to remove warnings now that args are regenerated
+        if (showPermissionDialog) {
+          const { autoPopulatedFields } = autoPopulateArguments(
+            result.arguments[toolName],
+            inputSchema || {}
+          );
+          setShowPermissionDialog({
+            ...showPermissionDialog,
+            arguments: args,
+            autoPopulatedFields: autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined,
+            missingDependencies: undefined, // Clear since we regenerated
+            invalidFields: undefined, // Clear since we regenerated
+          });
+        }
+      } else {
+        alert(`Regeneration failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error("Single tool regeneration error:", error);
+      alert("Failed to regenerate. Check console for details.");
+    } finally {
+      setIsRegeneratingSingle(false);
     }
   }
 
@@ -845,7 +1154,7 @@ export default function Results({
       {/* Permission Dialog */}
       {showPermissionDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
             <div className="flex items-start gap-3 mb-4">
               <AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-1" />
               <div>
@@ -952,19 +1261,49 @@ export default function Results({
               )}
             </div>
 
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => handleToolExecution(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleToolExecution(true)}
-                className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
-              >
-                Execute Tool
-              </button>
+            <div className="flex gap-3 justify-between">
+              {executionContext.size > 0 && showPermissionDialog && (
+                <button
+                  onClick={() => {
+                    regenerateSingleTool(
+                      showPermissionDialog.toolName,
+                      showPermissionDialog.description || '',
+                      showPermissionDialog.inputSchema
+                    );
+                  }}
+                  disabled={isRegeneratingSingle}
+                  className="px-4 py-2 text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  title={`Regenerate arguments using ${executionContext.size} execution context${executionContext.size > 1 ? 's' : ''}`}
+                >
+                  {isRegeneratingSingle ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Regenerate Dataset ({executionContext.size})
+                    </>
+                  )}
+                </button>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleToolExecution(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleToolExecution(true)}
+                  className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+                >
+                  Execute Tool
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1090,24 +1429,39 @@ export default function Results({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 mb-4">
-          <button
-            onClick={handleShare}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Link className="w-4 h-4" />
-                Copy link
-              </>
-            )}
-          </button>
-          <button
+        <div className="flex justify-between gap-2 mb-4">
+          <div className="flex gap-2">
+            <button
+              onClick={handleShare}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Link className="w-4 h-4" />
+                  Copy link
+                </>
+              )}
+            </button>
+            <a
+              href={`https://smithery.ai/search?q=${encodeURIComponent(smitherySearchTerm)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+              title={`Search for "${smitherySearchTerm}" on Smithery`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Find on Smithery
+            </a>
+          </div>
+          <div className="flex gap-2">
+            <button
             onClick={executeAllTools}
             disabled={
               !hasExecutableTools || executingAll || executingTools.size > 0
@@ -1126,9 +1480,36 @@ export default function Results({
               </>
             )}
           </button>
+          {executionContext.size > 0 && (
+            <button
+              onClick={regenerateTestsWithContext}
+              disabled={isRegenerating || executingAll || executingTools.size > 0}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-purple-600 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={`Use execution results from ${executionContext.size} completed tool(s) to generate better arguments for remaining tools`}
+            >
+              {isRegenerating ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Regenerate Dataset ({executionContext.size})
+                </>
+              )}
+            </button>
+          )}
+          </div>
         </div>
         <div className="space-y-3">
           {results.tests.map((test, index) => {
+            console.log(`🔄 [RENDER] Rendering test ${index}: ${test.name}`, {
+              toolName: test.details?.toolName,
+              requiresPermission: test.details?.requiresPermission,
+            });
             const executionResult = toolResults.get(test.name);
             const requiresPermission = Boolean(
               test.details?.requiresPermission
@@ -1163,11 +1544,78 @@ export default function Results({
             const prerequisites = requiresPermission && !hasExecutedResult 
               ? detectPrerequisites(test) 
               : [];
+            
+            // Compute effective arguments (regenerated + auto-populated)
+            let effectiveTest = test;
+            let effectiveAutoPopulatedFields: string[] | undefined;
+            
+            if (test.details?.toolName && test.details?.requiresPermission && !hasExecutedResult) {
+              const toolName = test.details.toolName;
+              const sampleArguments = test.details.sampleArguments;
+              const inputSchema = test.details.inputSchema;
+              
+              console.log(`🔍 [REACTIVE] Computing args for ${toolName}`, {
+                hasRegeneratedArgs: regeneratedArguments.has(toolName),
+                executionContextSize: executionContext.size,
+                executionContextKeys: Array.from(executionContext.keys()),
+              });
+              
+              // Use regenerated arguments if available, otherwise use original
+              const baseArguments = regeneratedArguments.has(toolName) 
+                ? regeneratedArguments.get(toolName)
+                : sampleArguments;
+              
+              console.log(`🔍 [REACTIVE] Base arguments for ${toolName}:`, baseArguments);
+              
+              // Apply auto-population from execution context
+              const { args, autoPopulatedFields } = autoPopulateArguments(
+                baseArguments || {},
+                inputSchema || {}
+              );
+              
+              console.log(`🔍 [REACTIVE] After auto-populate for ${toolName}:`, {
+                autoPopulatedFields,
+                updatedArgs: args,
+              });
+              
+              // If any fields were auto-populated, update the test details
+              if (autoPopulatedFields.length > 0 || regeneratedArguments.has(toolName)) {
+                effectiveTest = {
+                  ...test,
+                  details: {
+                    ...test.details,
+                    sampleArguments: args,
+                  }
+                };
+                effectiveAutoPopulatedFields = autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined;
+                
+                console.log(`✅ [REACTIVE] Updated effective test for ${toolName}`, {
+                  effectiveAutoPopulatedFields,
+                  hasUpdates: true,
+                });
+              } else {
+                console.log(`⚠️ [REACTIVE] No updates for ${toolName} - no auto-population or regeneration`);
+              }
+            }
+            
+            // Check if this tool has regenerated arguments
+            const hasRegeneratedArgs = test.details?.toolName 
+              ? regeneratedArguments.has(test.details.toolName)
+              : false;
+
+            // Log what we're passing to TestDetails
+            if (effectiveAutoPopulatedFields && effectiveAutoPopulatedFields.length > 0) {
+              console.log(`🎨 [PASSING TO TestDetails] ${test.details?.toolName}:`, {
+                autoPopulatedFields: effectiveAutoPopulatedFields,
+                hasRegeneratedArgs,
+                sampleArguments: effectiveTest.details?.sampleArguments,
+              });
+            }
 
             return (
               <TestDetails
-                key={index}
-                test={test}
+                key={`${index}-${executionContext.size}-${regeneratedArguments.size}`}
+                test={effectiveTest}
                 statusClass={statusClass}
                 isOpen={isOpen}
                 onToggle={(open) =>
@@ -1177,6 +1625,8 @@ export default function Results({
                 isExecuting={executingTools.has(test.name)}
                 executionResult={executionResult}
                 prerequisites={prerequisites.length > 0 ? prerequisites : undefined}
+                hasRegeneratedArgs={hasRegeneratedArgs}
+                autoPopulatedFields={effectiveAutoPopulatedFields}
               />
             );
           })}
@@ -1219,6 +1669,80 @@ export default function Results({
             </div>
           </div>
         )}
+
+        {/* Call to Action Section */}
+        <div className="mt-12 mb-8 p-8 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 border border-blue-200 rounded-2xl">
+          <div className="text-center mb-6">
+            <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+              This is cool; what's my next step?
+            </h3>
+            <p className="text-gray-600">
+              Take your MCP testing to the next level
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            {/* Sign up CTA */}
+            <a
+              href="https://scorecard.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group p-6 bg-white border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:shadow-lg transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
+                    Sign up for Scorecard
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Build, test, and monitor AI applications with comprehensive evaluation tools
+                  </p>
+                  <div className="mt-3 flex items-center gap-2 text-sm font-medium text-blue-600 group-hover:gap-3 transition-all">
+                    <span>Get started</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </a>
+
+            {/* Contact CTA */}
+            <a
+              href="https://www.scorecard.io/book-a-demo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group p-6 bg-white border-2 border-purple-200 rounded-xl hover:border-purple-400 hover:shadow-lg transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
+                    Automated MCP Evals in CI/CD
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Contact us to set up automated MCP evaluations in your CI/CD pipeline
+                  </p>
+                  <div className="mt-3 flex items-center gap-2 text-sm font-medium text-purple-600 group-hover:gap-3 transition-all">
+                    <span>Contact us</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
       </div>
     </main>
   );
