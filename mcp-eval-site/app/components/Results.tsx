@@ -60,6 +60,19 @@ export default function Results({
     (test) => test.details?.requiresPermission
   );
 
+  // Debug: Log execution context changes
+  useEffect(() => {
+    console.log('📊 [EXECUTION CONTEXT UPDATE]', {
+      size: executionContext.size,
+      keys: Array.from(executionContext.keys()),
+      data: Array.from(executionContext.entries()).map(([key, value]) => ({
+        tool: key,
+        hasResult: !!value.result,
+        responseFields: value.responseFields,
+      })),
+    });
+  }, [executionContext]);
+
   useEffect(() => {
     setOpenSections({});
   }, [results.serverUrl, results.timestamp]);
@@ -241,7 +254,8 @@ export default function Results({
   // Helper function to extract prefix from ID field (handles both camelCase and snake_case)
   function extractIdPrefix(fieldName: string): string | null {
     // Match various ID patterns: project_id, projectId, project-id, etc.
-    const match = fieldName.match(/^(.+?)[-_]?[iI]d$/);
+    // Case-insensitive match for "id" suffix
+    const match = fieldName.match(/^(.+?)(?:[-_]?id|Id)$/i);
     if (match) {
       return match[1];
     }
@@ -377,6 +391,7 @@ export default function Results({
     
     // Extract prefix if this is an ID field (handles both camelCase and snake_case)
     const idPrefix = extractIdPrefix(fieldName);
+    console.log(`[findMatchingValue] 🔍 Extracted ID prefix from "${fieldName}": "${idPrefix}"`);
     
     for (const [toolName, contextEntry] of executionContext.entries()) {
       console.log(`[findMatchingValue] Checking tool: ${toolName}`);
@@ -384,11 +399,44 @@ export default function Results({
       
       // Get response schema fields if available
       const responseFields = contextEntry.responseFields || [];
+      console.log(`[findMatchingValue] Tool ${toolName} data type:`, typeof data, 'value:', data);
       console.log(`[findMatchingValue] Tool ${toolName} returns fields:`, responseFields);
       if (!data) continue;
 
+      // Priority 0: If response is a simple value (string/number) and tool name matches field, use it directly
+      if (idPrefix && (typeof data === 'string' || typeof data === 'number')) {
+        console.log(`[findMatchingValue] 🔍 Priority 0 check: Simple value detected for ${fieldName}`);
+        console.log(`[findMatchingValue] 🔍 idPrefix: "${idPrefix}", data: "${data}"`);
+        
+        const normalizedPrefix = normalizeForComparison(idPrefix);
+        const normalizedToolName = normalizeForComparison(toolName);
+        const toolBaseName = normalizedToolName.replace(/^(create|list|get|update|delete|upsert)/, '');
+        
+        console.log(`[findMatchingValue] 🔍 Normalized: prefix="${normalizedPrefix}", toolName="${normalizedToolName}", baseName="${toolBaseName}"`);
+        console.log(`[findMatchingValue] 🔍 Checking matches:`, {
+          toolNameIncludesPrefix: normalizedToolName.includes(normalizedPrefix),
+          baseNameEqualsPrefix: toolBaseName === normalizedPrefix,
+          prefixIncludesBaseName: normalizedPrefix.includes(toolBaseName),
+        });
+        
+        if (normalizedToolName.includes(normalizedPrefix) || 
+            toolBaseName === normalizedPrefix ||
+            normalizedPrefix.includes(toolBaseName)) {
+          console.log(`[findMatchingValue] ✅ Simple value match: ${fieldName} with ${toolName} -> ${data} (response is primitive)`);
+          if (!bestMatch || 0 < bestMatch.priority) {
+            bestMatch = {
+              value: data,
+              source: toolName,
+              priority: 0  // Highest priority
+            };
+          }
+        } else {
+          console.log(`[findMatchingValue] ❌ No match: tool name doesn't match field prefix`);
+        }
+      }
+
       // Priority 1: Direct exact field match (case-insensitive)
-      if (data[fieldName] !== undefined && data[fieldName] !== null) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && data[fieldName] !== undefined && data[fieldName] !== null) {
         console.log(`[findMatchingValue] Found direct match for ${fieldName}: ${data[fieldName]}`);
         if (!bestMatch || 1 < bestMatch.priority) {
           bestMatch = {
@@ -405,7 +453,7 @@ export default function Results({
         ? fieldName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()) // snake_case to camelCase
         : fieldName.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase(); // camelCase to snake_case
       
-      if (alternateFieldName !== fieldName && data[alternateFieldName] !== undefined && data[alternateFieldName] !== null) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && alternateFieldName !== fieldName && data[alternateFieldName] !== undefined && data[alternateFieldName] !== null) {
         console.log(`[findMatchingValue] Found alternate match ${alternateFieldName} for ${fieldName}: ${data[alternateFieldName]}`);
         if (!bestMatch || 2 < bestMatch.priority) {
           bestMatch = {
@@ -418,7 +466,7 @@ export default function Results({
 
       // Priority 3: Schema-aware ID field matching
       // Use response schema to verify the tool actually returns an 'id' field
-      if (idPrefix && responseFields.includes('id')) {
+      if (typeof data === 'object' && data !== null && !Array.isArray(data) && idPrefix && responseFields.includes('id')) {
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
         
@@ -449,7 +497,7 @@ export default function Results({
       }
       
       // Priority 4: ID field matching without schema verification (fallback)
-      else if (idPrefix) {
+      else if (typeof data === 'object' && data !== null && !Array.isArray(data) && idPrefix) {
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
         const toolBaseName = normalizedToolName.replace(/^(create|list|get|update|delete|upsert)/, '');
@@ -473,7 +521,7 @@ export default function Results({
       }
 
       // Priority 5: Check nested data structures (for list/paginated responses)
-      if (idPrefix && data.data && Array.isArray(data.data) && data.data.length > 0) {
+      if (typeof data === 'object' && data !== null && idPrefix && data.data && Array.isArray(data.data) && data.data.length > 0) {
         const firstItem = data.data[0];
         const normalizedPrefix = normalizeForComparison(idPrefix);
         const normalizedToolName = normalizeForComparison(toolName);
@@ -630,37 +678,32 @@ export default function Results({
       const isRequired = required.includes(fieldName);
       console.log(`[autoPopulateArguments] Processing field: ${fieldName}, required: ${isRequired}, current value:`, args[fieldName]);
       
-      // Check if this looks like an ID field that should be replaced (handles both camelCase and snake_case)
+      // Check if this looks like an ID field (handles both camelCase and snake_case)
       const idPrefix = extractIdPrefix(fieldName);
+      const hasGenericValue = typeof args[fieldName] === 'string' && 
+        (args[fieldName].startsWith('test-') || args[fieldName] === 'test_value');
       
       // Skip non-ID fields that already have real values
-      if (!idPrefix && args[fieldName] !== undefined && args[fieldName] !== null && args[fieldName] !== '') {
+      if (!idPrefix && args[fieldName] !== undefined && args[fieldName] !== null && args[fieldName] !== '' && !hasGenericValue) {
         console.log(`[autoPopulateArguments] Skipping ${fieldName} - already has non-ID value`);
         continue;
       }
       
-      // For ID fields or empty fields, try to find from execution context
-      if (idPrefix || !args[fieldName]) {
-        // Check if the current value is a placeholder
-        const currentValueIsPlaceholder = isPlaceholderValue(args[fieldName], fieldName, fieldSchema);
-        
+      // For ID fields or empty/placeholder fields, try to find from execution context
+      if (idPrefix || !args[fieldName] || hasGenericValue) {
         // Try to find a matching value from execution context
         const match = findMatchingValue(fieldName, fieldSchema);
         
         if (match) {
-          // Found a match in execution context - use it!
           console.log(`[autoPopulateArguments] Auto-populating ${fieldName} with value from execution:`, match.value, '(replacing:', args[fieldName], ')');
           args[fieldName] = match.value;
           autoPopulatedFields.push(fieldName);
-        } else if (currentValueIsPlaceholder) {
-          // No match found and current value is placeholder
-          if (isRequired && executionContext.size > 0 && idPrefix) {
-            console.log(`[autoPopulateArguments] Missing required ID field: ${fieldName} (no match in execution context, has placeholder)`);
-            missingDependencies.push(fieldName);
-          }
-        } else if (args[fieldName]) {
-          // No match found but current value is valid (likely from regeneration)
-          console.log(`[autoPopulateArguments] ${fieldName} already has valid value (likely from regeneration), keeping it:`, args[fieldName]);
+        } else if (isRequired && executionContext.size > 0 && idPrefix && isPlaceholderValue(args[fieldName], fieldName, fieldSchema)) {
+          // Only mark as missing if it's required, we have context, it's an ID field, and value is placeholder
+          console.log(`[autoPopulateArguments] Missing required ID field: ${fieldName} (no match found)`);
+          missingDependencies.push(fieldName);
+        } else {
+          console.log(`[autoPopulateArguments] No match for ${fieldName}, keeping current value:`, args[fieldName]);
         }
       }
     }
@@ -1227,7 +1270,7 @@ export default function Results({
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                      Smart Regenerate ({executionContext.size})
+                      Regenerate Dataset ({executionContext.size})
                     </>
                   )}
                 </button>
@@ -1424,7 +1467,7 @@ export default function Results({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Smart Regenerate ({executionContext.size})
+                  Regenerate Dataset ({executionContext.size})
                 </>
               )}
             </button>
@@ -1432,6 +1475,10 @@ export default function Results({
         </div>
         <div className="space-y-3">
           {results.tests.map((test, index) => {
+            console.log(`🔄 [RENDER] Rendering test ${index}: ${test.name}`, {
+              toolName: test.details?.toolName,
+              requiresPermission: test.details?.requiresPermission,
+            });
             const executionResult = toolResults.get(test.name);
             const requiresPermission = Boolean(
               test.details?.requiresPermission
@@ -1476,16 +1523,29 @@ export default function Results({
               const sampleArguments = test.details.sampleArguments;
               const inputSchema = test.details.inputSchema;
               
+              console.log(`🔍 [REACTIVE] Computing args for ${toolName}`, {
+                hasRegeneratedArgs: regeneratedArguments.has(toolName),
+                executionContextSize: executionContext.size,
+                executionContextKeys: Array.from(executionContext.keys()),
+              });
+              
               // Use regenerated arguments if available, otherwise use original
               const baseArguments = regeneratedArguments.has(toolName) 
                 ? regeneratedArguments.get(toolName)
                 : sampleArguments;
+              
+              console.log(`🔍 [REACTIVE] Base arguments for ${toolName}:`, baseArguments);
               
               // Apply auto-population from execution context
               const { args, autoPopulatedFields } = autoPopulateArguments(
                 baseArguments || {},
                 inputSchema || {}
               );
+              
+              console.log(`🔍 [REACTIVE] After auto-populate for ${toolName}:`, {
+                autoPopulatedFields,
+                updatedArgs: args,
+              });
               
               // If any fields were auto-populated, update the test details
               if (autoPopulatedFields.length > 0 || regeneratedArguments.has(toolName)) {
@@ -1497,6 +1557,13 @@ export default function Results({
                   }
                 };
                 effectiveAutoPopulatedFields = autoPopulatedFields.length > 0 ? autoPopulatedFields : undefined;
+                
+                console.log(`✅ [REACTIVE] Updated effective test for ${toolName}`, {
+                  effectiveAutoPopulatedFields,
+                  hasUpdates: true,
+                });
+              } else {
+                console.log(`⚠️ [REACTIVE] No updates for ${toolName} - no auto-population or regeneration`);
               }
             }
             
@@ -1505,9 +1572,18 @@ export default function Results({
               ? regeneratedArguments.has(test.details.toolName)
               : false;
 
+            // Log what we're passing to TestDetails
+            if (effectiveAutoPopulatedFields && effectiveAutoPopulatedFields.length > 0) {
+              console.log(`🎨 [PASSING TO TestDetails] ${test.details?.toolName}:`, {
+                autoPopulatedFields: effectiveAutoPopulatedFields,
+                hasRegeneratedArgs,
+                sampleArguments: effectiveTest.details?.sampleArguments,
+              });
+            }
+
             return (
               <TestDetails
-                key={index}
+                key={`${index}-${executionContext.size}-${regeneratedArguments.size}`}
                 test={effectiveTest}
                 statusClass={statusClass}
                 isOpen={isOpen}

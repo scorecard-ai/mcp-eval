@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { PlayCircle } from "lucide-react";
 import type { TestResult } from "@/app/types/mcp-eval";
 
@@ -28,6 +29,17 @@ export default function TestDetails({
   hasRegeneratedArgs,
   autoPopulatedFields,
 }: TestDetailsProps) {
+  // Debug: Log props received
+  useEffect(() => {
+    if (test.details?.toolName && test.details?.requiresPermission) {
+      console.log(`🎨 [TestDetails] Rendering ${test.details.toolName}`, {
+        autoPopulatedFields,
+        hasRegeneratedArgs,
+        sampleArguments: test.details.sampleArguments,
+      });
+    }
+  }, [autoPopulatedFields, hasRegeneratedArgs, test.details?.sampleArguments, test.details?.toolName, test.details?.requiresPermission]);
+
   const showExecutionButton =
     test.details?.requiresPermission && !test.details?.executed;
 
@@ -84,7 +96,7 @@ export default function TestDetails({
           </h3>
           {hasRegeneratedArgs && (
             <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded" title="Arguments enhanced with execution context">
-              ✨ Smart Args
+              ✨ Regenerated Dataset
             </span>
           )}
         </div>
