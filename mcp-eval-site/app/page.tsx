@@ -178,31 +178,6 @@ export default function Home() {
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
-                    Tools Discovered
-                  </p>
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                </div>
-                <p className="text-2xl font-bold text-slate-900 mb-1">
-                  18
-                </p>
-                <p className="text-sm text-slate-600 mb-3">
-                  All tools successfully enumerated
-                </p>
-                <div className="text-xs text-slate-500 space-y-1">
-                  <div className="flex justify-between">
-                    <span>Executable</span>
-                    <span className="font-medium text-slate-700">18/18</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>With Examples</span>
-                    <span className="font-medium text-green-600">✓ All</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
                     Resource Discovery
                   </p>
                   <div className="w-2 h-2 rounded-full bg-green-500"></div>
@@ -221,6 +196,31 @@ export default function Home() {
                   <div className="flex justify-between">
                     <span>Templates</span>
                     <span className="font-medium text-slate-700">0</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                    Tools Discovered
+                  </p>
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                </div>
+                <p className="text-2xl font-bold text-slate-900 mb-1">
+                  18
+                </p>
+                <p className="text-sm text-slate-600 mb-3">
+                  All tools successfully enumerated
+                </p>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Executable</span>
+                    <span className="font-medium text-slate-700">18/18</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>With Examples</span>
+                    <span className="font-medium text-green-600">✓ All</span>
                   </div>
                 </div>
               </div>

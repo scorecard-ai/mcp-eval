@@ -1390,31 +1390,6 @@ export default function Results({
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
-                  Tools Discovered
-                </p>
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              </div>
-              <p className="text-2xl font-bold text-slate-900 mb-1">
-                {results.tests.filter(t => t.details?.requiresPermission).length}
-              </p>
-              <p className="text-sm text-slate-600 mb-3">
-                Tools available for execution
-              </p>
-              <div className="text-xs text-slate-500 space-y-1">
-                <div className="flex justify-between">
-                  <span>Tests Executed</span>
-                  <span className="font-medium text-slate-700">{scorecard.tests.executed}/{scorecard.tests.total}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Pass Rate</span>
-                  <span className="font-medium text-green-600">{scorecard.tests.passRate ?? 0}%</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
                   Resource Discovery
                 </p>
                 <div className={`w-2 h-2 rounded-full ${
@@ -1439,6 +1414,31 @@ export default function Results({
                   <span className="font-medium text-green-600">
                     {scorecard.resources.status === "Success" ? "✓ Yes" : "—"}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                  Tools Discovered
+                </p>
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              </div>
+              <p className="text-2xl font-bold text-slate-900 mb-1">
+                {results.tests.filter(t => t.details?.requiresPermission).length}
+              </p>
+              <p className="text-sm text-slate-600 mb-3">
+                Tools available for execution
+              </p>
+              <div className="text-xs text-slate-500 space-y-1">
+                <div className="flex justify-between">
+                  <span>Tests Executed</span>
+                  <span className="font-medium text-slate-700">{scorecard.tests.executed}/{scorecard.tests.total}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Pass Rate</span>
+                  <span className="font-medium text-green-600">{scorecard.tests.passRate ?? 0}%</span>
                 </div>
               </div>
             </div>
