@@ -231,9 +231,6 @@ export default function Home() {
                       Successfully created project and returned ID
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded">
-                    ✨ Regenerated Dataset
-                  </span>
                 </div>
                 <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100">
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></div>
