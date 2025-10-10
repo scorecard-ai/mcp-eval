@@ -110,7 +110,7 @@ export default function Results({
           : Boolean(test.passed);
 
         if (!(test.name in nextState)) {
-          nextState[test.name] = hasExecuted ? !success : false;
+          nextState[test.name] = false;
         }
 
         if (hasExecuted && success) {
@@ -1226,19 +1226,12 @@ export default function Results({
             {/* Prerequisites tip */}
             {showPermissionDialog.prerequisites && showPermissionDialog.prerequisites.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-3">
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/>
-                  </svg>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900">
-                      💡 Tip
-                    </p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Execute <span className="font-mono font-semibold">{showPermissionDialog.prerequisites.join(", ")}</span> first to auto-populate required fields
-                    </p>
-                  </div>
-                </div>
+                <p className="text-sm font-medium text-blue-900">
+                  💡 Tip
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Execute <span className="font-mono font-semibold">{showPermissionDialog.prerequisites.join(", ")}</span> first to auto-populate required fields
+                </p>
               </div>
             )}
 
@@ -1656,7 +1649,7 @@ export default function Results({
             const success = executionResult
               ? Boolean(executionResult.success)
               : Boolean(test.passed);
-            const computedDefaultOpen = hasBeenExecuted ? !success : false;
+            const computedDefaultOpen = false;
             const isOpen = openSections[test.name] ?? computedDefaultOpen;
             
             // Detect if this test has unmet prerequisites
