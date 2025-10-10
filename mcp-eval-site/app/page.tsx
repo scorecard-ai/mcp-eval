@@ -27,9 +27,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-white flex flex-col">
+    <main className="min-h-screen bg-white">
       {/* Google-style centered layout */}
-      <div className="flex-1 flex flex-col justify-center items-center px-6 -mt-24">
+      <div className="flex flex-col justify-center items-center px-6 py-16">
         <div className="text-center mb-8">
           <h1 className="text-6xl font-normal text-gray-900 mb-8 tracking-tight">
             MCP Eval
@@ -93,6 +93,161 @@ export default function Home() {
                 {example.name}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Section Divider */}
+        <div className="w-full max-w-2xl px-6 my-12">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-4 bg-white text-sm text-gray-500">
+                Example
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Example MCP Scorecard Section */}
+        <div className="w-full max-w-4xl px-6 mb-16">
+          <h2 className="text-center text-2xl font-semibold text-gray-900 mb-6">
+            Example MCP Scorecard
+          </h2>
+          <p className="text-center text-sm text-gray-600 mb-8 max-w-2xl mx-auto">
+            See what a comprehensive MCP server evaluation looks like
+          </p>
+          
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+            <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6">
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between text-white">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.32em] text-blue-100">
+                    MCP Evaluation Scorecard
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold">
+                    https://mcp.scorecard.io/mcp
+                  </h3>
+                  <p className="mt-1 text-sm text-blue-100/90">
+                    Tested Oct 10, 2025, 3:45 PM
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 self-start sm:self-center">
+                  <div className="rounded-full bg-white/10 px-5 py-3 text-center">
+                    <p className="text-[0.7rem] uppercase tracking-wide text-blue-100">
+                      Pass Rate
+                    </p>
+                    <p className="text-4xl font-semibold leading-none">
+                      100%
+                    </p>
+                  </div>
+                  <div className="text-sm text-blue-100">
+                    <p className="text-lg font-semibold text-white">
+                      18 / 18
+                    </p>
+                    <p>tests passed</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6 p-6 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  Authentication
+                </p>
+                <p className="mt-2 text-base font-medium text-slate-900">
+                  Public
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Server responded to unauthenticated requests
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  Resource Discovery
+                </p>
+                <p className="mt-2 text-base font-medium text-emerald-600">
+                  Success
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Discovered 0 resources
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  Client Compatibility
+                </p>
+                <p className="mt-2 text-sm text-slate-700">
+                  Compatible with OpenAI, Claude.ai, and Cursor
+                </p>
+                <ul className="mt-3 space-y-1.5">
+                  <li className="flex flex-col gap-1 rounded-lg bg-white/70 px-3 py-2 text-sm shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-slate-900">
+                        OpenAI
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                        Compatible
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Server exposes 18 tools via MCP integration
+                    </p>
+                  </li>
+                  <li className="flex flex-col gap-1 rounded-lg bg-white/70 px-3 py-2 text-sm shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-slate-900">
+                        Claude.ai
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                        Compatible
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      All tools exposed via listTools
+                    </p>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Example Test Results */}
+            <div className="border-t border-slate-200 px-6 py-4 bg-slate-50/50">
+              <p className="text-xs uppercase tracking-wide text-slate-500 mb-3">
+                Tool Tests
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100">
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-slate-900">
+                      Tool Test Case: create_projects
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Successfully created project and returned ID
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded">
+                    ✨ Regenerated Dataset
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100">
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-slate-900">
+                      Tool Test Case: create_testsets
+                    </h4>
+                    <p className="text-xs text-green-700 mt-1">
+                      ✅ Auto-populated: projectId from execution context
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
