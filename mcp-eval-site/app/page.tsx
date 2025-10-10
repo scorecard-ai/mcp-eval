@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Zap } from "lucide-react";
+import DonutChart from "./components/DonutChart";
 
 export default function Home() {
   const [serverUrl, setServerUrl] = useState("");
@@ -111,7 +112,7 @@ export default function Home() {
         </div>
 
         {/* Example MCP Scorecard Section */}
-        <div className="w-full max-w-4xl px-6 mb-16">
+        <div className="w-full max-w-6xl px-6 mb-16">
           <h2 className="text-center text-2xl font-semibold text-gray-900 mb-6">
             Example MCP Scorecard
           </h2>
@@ -120,126 +121,231 @@ export default function Home() {
           </p>
           
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
-            <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6">
-              <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between text-white">
+            {/* Header with URL */}
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.32em] text-blue-100">
-                    MCP Evaluation Scorecard
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                    MCP Server Evaluation
                   </p>
-                  <h3 className="mt-2 text-2xl font-semibold">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     https://mcp.scorecard.io/mcp
                   </h3>
-                  <p className="mt-1 text-sm text-blue-100/90">
-                    Tested Oct 10, 2025, 3:45 PM
-                  </p>
                 </div>
-                <div className="flex items-center gap-4 self-start sm:self-center">
-                  <div className="rounded-full bg-white/10 px-5 py-3 text-center">
-                    <p className="text-[0.7rem] uppercase tracking-wide text-blue-100">
-                      Pass Rate
-                    </p>
-                    <p className="text-4xl font-semibold leading-none">
-                      100%
-                    </p>
+                <div className="text-xs text-slate-500">
+                  Tested Oct 10, 2025, 3:45 PM
+                </div>
+              </div>
+            </div>
+
+            {/* Lighthouse-style metrics with donuts */}
+            <div className="bg-slate-50 px-8 py-10">
+              <div className="flex justify-center items-center gap-10 flex-wrap">
+                <DonutChart score={100} label="Performance" size={112} strokeWidth={8} />
+                <DonutChart score={94} label="Reliability" size={112} strokeWidth={8} />
+                <DonutChart score={100} label="Best Practices" size={112} strokeWidth={8} />
+                <DonutChart score={87} label="Compatibility" size={112} strokeWidth={8} />
+              </div>
+            </div>
+
+            {/* Detailed metrics */}
+            <div className="grid gap-6 p-6 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                    Authentication
+                  </p>
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                </div>
+                <p className="text-base font-semibold text-slate-900 mb-1">
+                  Public Access
+                </p>
+                <p className="text-sm text-slate-600 mb-3">
+                  Server responded to unauthenticated requests
+                </p>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Response Time</span>
+                    <span className="font-medium text-slate-700">142ms</span>
                   </div>
-                  <div className="text-sm text-blue-100">
-                    <p className="text-lg font-semibold text-white">
-                      18 / 18
-                    </p>
-                    <p>tests passed</p>
+                  <div className="flex justify-between">
+                    <span>Connection Test</span>
+                    <span className="font-medium text-green-600">✓ Passed</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                    Tools Discovered
+                  </p>
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                </div>
+                <p className="text-2xl font-bold text-slate-900 mb-1">
+                  18
+                </p>
+                <p className="text-sm text-slate-600 mb-3">
+                  All tools successfully enumerated
+                </p>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Executable</span>
+                    <span className="font-medium text-slate-700">18/18</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>With Examples</span>
+                    <span className="font-medium text-green-600">✓ All</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                    Resource Discovery
+                  </p>
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                </div>
+                <p className="text-base font-semibold text-emerald-600 mb-1">
+                  Success
+                </p>
+                <p className="text-sm text-slate-600 mb-3">
+                  0 resources discovered
+                </p>
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Schema Valid</span>
+                    <span className="font-medium text-green-600">✓ Yes</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Templates</span>
+                    <span className="font-medium text-slate-700">0</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-6 p-6 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">
-                  Authentication
-                </p>
-                <p className="mt-2 text-base font-medium text-slate-900">
-                  Public
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Server responded to unauthenticated requests
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">
-                  Resource Discovery
-                </p>
-                <p className="mt-2 text-base font-medium text-emerald-600">
-                  Success
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Discovered 0 resources
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">
-                  Client Compatibility
-                </p>
-                <p className="mt-2 text-sm text-slate-700">
-                  Compatible with OpenAI, Claude.ai, and Cursor
-                </p>
-                <ul className="mt-3 space-y-1.5">
-                  <li className="flex flex-col gap-1 rounded-lg bg-white/70 px-3 py-2 text-sm shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-slate-900">
+            {/* Client Compatibility Section */}
+            <div className="border-t border-slate-200 px-6 py-5 bg-slate-50/50">
+              <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-3">
+                Client Compatibility
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="flex items-center gap-3 rounded-lg bg-white px-4 py-3 border border-slate-200 shadow-sm">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg">
+                      O
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-900 text-sm">
                         OpenAI
                       </span>
                       <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
-                        Compatible
+                        ✓ Compatible
                       </span>
                     </div>
                     <p className="text-xs text-slate-600">
-                      Server exposes 18 tools via MCP integration
+                      18 tools accessible
                     </p>
-                  </li>
-                  <li className="flex flex-col gap-1 rounded-lg bg-white/70 px-3 py-2 text-sm shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-slate-900">
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg bg-white px-4 py-3 border border-slate-200 shadow-sm">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold text-lg">
+                      C
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-900 text-sm">
                         Claude.ai
                       </span>
                       <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
-                        Compatible
+                        ✓ Compatible
                       </span>
                     </div>
                     <p className="text-xs text-slate-600">
-                      All tools exposed via listTools
+                      All tools via listTools
                     </p>
-                  </li>
-                </ul>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg bg-white px-4 py-3 border border-slate-200 shadow-sm">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
+                      ⌃
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-900 text-sm">
+                        Cursor
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                        ✓ Compatible
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      MCP integration active
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Example Test Results */}
-            <div className="border-t border-slate-200 px-6 py-4 bg-slate-50/50">
-              <p className="text-xs uppercase tracking-wide text-slate-500 mb-3">
-                Tool Tests
-              </p>
+            {/* Test Results */}
+            <div className="border-t border-slate-200 px-6 py-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                  Test Execution Results
+                </p>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-green-600 font-semibold">18 passed</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-slate-500">0 failed</span>
+                </div>
+              </div>
               <div className="space-y-2">
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex-shrink-0">
+                    <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
                   <div className="flex-1">
-                    <h4 className="text-sm font-medium text-slate-900">
-                      Tool Test Case: create_projects
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        create_projects
+                      </h4>
+                      <span className="text-xs text-green-700 font-medium">128ms</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-0.5">
                       Successfully created project and returned ID
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-100">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex-shrink-0">
+                    <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
                   <div className="flex-1">
-                    <h4 className="text-sm font-medium text-slate-900">
-                      Tool Test Case: create_testsets
-                    </h4>
-                    <p className="text-xs text-green-700 mt-1">
-                      ✅ Auto-populated: projectId from execution context
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        create_testsets
+                      </h4>
+                      <span className="text-xs text-green-700 font-medium">95ms</span>
+                    </div>
+                    <p className="text-xs text-green-700 mt-0.5 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                      </svg>
+                      Auto-populated: projectId from execution context
                     </p>
                   </div>
                 </div>
