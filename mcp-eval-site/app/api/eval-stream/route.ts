@@ -61,336 +61,206 @@ function getJSF() {
 }
 
 /**
- * Generates intelligent sample arguments for a tool using AI
+ * Helper function to extract actual data from MCP response
  */
-async function generateSampleArguments(
-  tool: { name: string; description?: string; inputSchema?: any },
-  logger: StreamLogger,
-  serverUrl?: string
-): Promise<any> {
-  if (!tool.inputSchema || !tool.inputSchema.properties) {
-    return {};
+function extractActualData(result: any): any {
+  const contentArray = result.result || result.content;
+  if (!contentArray) return result;
+  
+  try {
+    const textContent = Array.isArray(contentArray) 
+      ? contentArray.find((c: any) => c.type === 'text')
+      : null;
+      
+    if (textContent?.text) {
+      return JSON.parse(textContent.text);
+    }
+  } catch (e) {
+    // Return raw if parsing fails
   }
+  
+  return result;
+}
 
-  // Generate fallback first as a starting point
-  logger.log(`🎲 Generating arguments for '${tool.name}'`);
-  const fallbackArgs = await generateFallbackArguments(tool.inputSchema);
-  logger.log(`✓ Arguments generated: ${JSON.stringify(fallbackArgs).substring(0, 100)}...`);
+/**
+ * Helper function to clean markdown code fences from LLM response
+ */
+function cleanLLMResponse(text: string): string {
+  // Remove markdown code fences (```json ... ``` or ``` ... ```)
+  let cleaned = text.trim();
+  
+  // Remove opening fence with optional language identifier
+  cleaned = cleaned.replace(/^```(?:json|javascript|js)?\s*\n?/i, '');
+  
+  // Remove closing fence
+  cleaned = cleaned.replace(/\n?```\s*$/i, '');
+  
+  return cleaned.trim();
+}
+
+/**
+ * Generates intelligent sample arguments for multiple tools in batch using AI
+ * This ensures consistency across tools and enables cross-tool context
+ */
+async function generateBatchSampleArguments(
+  tools: Array<{ name: string; description?: string; inputSchema?: any }>,
+  logger: StreamLogger,
+  serverUrl?: string,
+  executionContext?: Map<string, {
+    result: any;
+    description?: string;
+    responseSchema?: any;
+    responseFields?: string[];
+  }>
+): Promise<Record<string, any>> {
+  const results: Record<string, any> = {};
+  
+  // Generate fallback arguments for all tools first
+  logger.log(`🎲 Generating fallback arguments for ${tools.length} tools...`);
+  const fallbackResults: Record<string, any> = {};
+  
+  for (const tool of tools) {
+    if (!tool.inputSchema || !tool.inputSchema.properties) {
+      fallbackResults[tool.name] = {};
+    } else {
+      fallbackResults[tool.name] = await generateFallbackArguments(tool.inputSchema);
+    }
+  }
+  
+  logger.log(`✅ Fallback arguments generated for all tools`);
   
   // Check if OpenAI API key is available
   if (!process.env.OPENAI_API_KEY) {
     logger.log("⚠️  OpenAI API key not found, using fallback arguments as-is");
-    return fallbackArgs;
+    return fallbackResults;
   }
 
   try {
     logger.log(`🤖 Enhancing test cases with LLM`);
-    const requiredFields = tool.inputSchema.required || [];
-    const optionalFields = Object.keys(tool.inputSchema.properties || {}).filter(
-      (field) => !requiredFields.includes(field)
-    );
     
-    // Pass server URL to LLM for context-aware generation
-    let serverContext = '';
-    if (serverUrl) {
-      serverContext = `\nServer: ${serverUrl}`;
+    // Build execution context section if available
+    let executionContextSection = '';
+    if (executionContext && executionContext.size > 0) {
+      logger.log(`📊 Including execution context from ${executionContext.size} completed tool(s)`);
+      const contextExamples = Array.from(executionContext.entries())
+        .map(([toolName, context]) => {
+          const data = extractActualData(context.result);
+          return `Tool: ${toolName}
+Description: ${context.description || 'N/A'}
+Actual Output Example:
+${JSON.stringify(data, null, 2)}
+${context.responseFields ? `Response Fields: ${context.responseFields.join(', ')}` : ''}`;
+        })
+        .join('\n\n---\n\n');
+      
+      executionContextSection = `
+EXECUTION CONTEXT (Real outputs from previous tool executions):
+${contextExamples}
+
+IMPORTANT: Use the actual output examples above to:
+1. Understand what IDs and values are ACTUALLY returned by tools
+2. Use these real IDs in dependent tools (e.g., if create_project returned {id: "proj_123"}, use "proj_123" in tools that need project_id)
+3. Match the actual output format and field names you see
+4. Avoid placeholder values when you have real data available
+
+`;
     }
     
-    const prompt = `Generate realistic test arguments for this MCP tool.
-    
-    ${serverContext}
+    const prompt = `Generate a CONSISTENT SET of realistic test arguments for these ${tools.length} MCP tools.
+${serverUrl ? `\nServer: ${serverUrl}\n` : ''}
+${executionContextSection}
+IMPORTANT: Generate arguments that form a coherent test scenario across ALL tools.
+- If one tool creates something (e.g., create_project), use realistic IDs in tools that reference it
+- Use consistent naming, values, and context across all tools
+- Make the arguments tell a story of how these tools would be used together
+- If execution context is provided, USE THE ACTUAL OUTPUT VALUES in dependent tools
 
-Tool: ${tool.name}
-${tool.description || ""}
-
-Schema:
-${JSON.stringify(tool.inputSchema, null, 2)}
-
-Template to improve:
-${JSON.stringify(fallbackArgs, null, 2)}
+TOOLS:
+${tools.map((tool, idx) => `
+Tool ${idx + 1}: ${tool.name}
+Description: ${tool.description || "No description provided"}
+Schema: ${JSON.stringify(tool.inputSchema, null, 2)}`).join('\n\n---')}
 
 RULES:
-1. Match the schema exactly - respect all types, constraints (min/max/minLength/maxLength), required fields, and enums
-2. Use realistic values appropriate for the service (analyze the server URL and tool name)
+1. Match each schema EXACTLY - respect all types, constraints (min/max/minLength/maxLength), required fields, and enums
+2. Use realistic values appropriate for the service (analyze the server URL and tool names)
 3. Numbers: Use positive integers for limit/count/page (1-100), respect min/max constraints
 4. Strings: Use meaningful text (no Lorem Ipsum gibberish), proper formats for email/url/uuid/date-time
 5. Arrays: Use concrete field names like ["user_query", "context"] for inputs, ["assistant_response"] for expected
-6. Objects: For jsonSchema fields, use PROPER JSON Schema structure: {"type": "object", "properties": {...}, "required": [...]}
+6. Objects: For jsonSchema fields and field mappings, use PROPER JSON Schema structure: {"type": "object", "properties": {...}, "required": [...]}
 7. Optional fields: OMIT cursor/nextCursor/page/offset/jq_filter unless required
+8. Cross-tool consistency: If a tool creates/updates something, use that same identifier in related tools
+9. **PRIORITY**: When execution context is available, prefer REAL IDs and values over generated ones
 
-Return ONLY valid JSON matching the schema.`;
+Return ONLY valid JSON in this exact format:
+{
+  "tool_name_1": { ...arguments for tool 1... },
+  "tool_name_2": { ...arguments for tool 2... },
+  ...
+}`;
 
     const { text } = await generateText({
-      model: openai("gpt-5"),
-      system: "You are a JSON generator that only outputs valid JSON without any markdown formatting or explanations.",
+      model: openai("gpt-4o"),
+      system: "You are a JSON generator that only outputs valid JSON without any markdown formatting or explanations. Generate consistent, coherent test data across multiple tools. When execution context is provided, use real output values to populate dependent tool inputs.",
       prompt,
       temperature: 0.3,
     });
 
     try {
-      // Parse and validate the generated JSON
-      const args = JSON.parse(text);
+      // Clean markdown code fences if present and parse the generated JSON
+      const cleanedText = cleanLLMResponse(text);
+      let allArgs: any;
       
-      // Validate required fields are present
-      const missingRequired = requiredFields.filter((field: string) => !(field in args));
-      if (missingRequired.length > 0) {
-        logger.log(`⚠️  LLM response missing required fields: ${missingRequired.join(", ")}, using fallback`);
-        return await generateFallbackArguments(tool.inputSchema);
+      try {
+        allArgs = JSON.parse(cleanedText);
+      } catch (parseError) {
+        console.error('❌ Failed to parse LLM response:', parseError);
+        console.error('❌ Raw text (first 500 chars):', text.substring(0, 500));
+        console.error('❌ Cleaned text (first 500 chars):', cleanedText.substring(0, 500));
+        logger.log(`⚠️  Failed to parse AI response (invalid JSON), using fallback for all tools`);
+        return fallbackResults;
       }
       
-      logger.log(`✨ LLM successfully enhanced arguments for '${tool.name}'`);
-      return args;
+      // Validate each tool's arguments
+      let allValid = true;
+      for (const tool of tools) {
+        const args = allArgs[tool.name];
+        
+        if (!args) {
+          logger.log(`⚠️  LLM response missing tool '${tool.name}', using fallback`);
+          results[tool.name] = fallbackResults[tool.name];
+          allValid = false;
+          continue;
+        }
+        
+        // Validate required fields are present
+        const requiredFields = tool.inputSchema?.required || [];
+        const missingRequired = requiredFields.filter((field: string) => !(field in args));
+        
+        if (missingRequired.length > 0) {
+          logger.log(`⚠️  LLM response for '${tool.name}' missing required fields: ${missingRequired.join(", ")}, using fallback`);
+          results[tool.name] = fallbackResults[tool.name];
+          allValid = false;
+        } else {
+          results[tool.name] = args;
+        }
+      }
+      
+      if (allValid) {
+        logger.log(`✨ LLM successfully generated consistent arguments for all ${tools.length} tools`);
+      } else {
+        logger.log(`⚠️  Some tools had validation issues, using mix of LLM and fallback arguments`);
+      }
+      
+      return results;
     } catch (parseError) {
-      logger.log(`⚠️  Failed to parse AI response, using fallback for '${tool.name}'`);
-      return await generateFallbackArguments(tool.inputSchema);
+      logger.log(`⚠️  Failed to parse AI response, using fallback for all tools`);
+      return fallbackResults;
     }
   } catch (error) {
-    logger.log(`⚠️  AI generation failed for '${tool.name}': ${error instanceof Error ? error.message : 'Unknown error'}`);
-    return await generateFallbackArguments(tool.inputSchema);
+    logger.log(`⚠️  AI batch generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return fallbackResults;
   }
-}
-
-/**
- * Post-process json-schema-faker output to apply smart domain-specific values and validate
- */
-function applySmartDefaults(args: any, schema: any): any {
-  if (!schema || !schema.properties || !args) {
-    return args;
-  }
-
-  const required = schema.required || [];
-
-  for (const [propName, value] of Object.entries(args)) {
-    const nameLower = propName.toLowerCase();
-    const propSchema = schema.properties[propName];
-    const isRequired = required.includes(propName);
-    
-    if (!propSchema) continue;
-    
-    // ===== Type and format validation =====
-    
-    // Fix Lorem Ipsum / gibberish text (common pattern from faker/jsf)
-    if (propSchema.type === 'string' && typeof value === 'string') {
-      const looksLikeLoremIpsum = /^[a-z]+( [a-z]+){1,5}$/i.test(value.trim());
-      const isTooShort = value.trim().length < 4;
-      
-      if (looksLikeLoremIpsum || isTooShort) {
-        // Replace with meaningful default
-        if (nameLower.includes('name')) {
-          args[propName] = 'Test Chatbot Project';
-        } else if (nameLower.includes('description') || nameLower.includes('desc')) {
-          args[propName] = 'A test project for evaluating AI system performance';
-        } else if (nameLower.includes('title')) {
-          args[propName] = 'Test Title';
-        } else {
-          args[propName] = `test_${propName}`;
-        }
-      }
-    }
-    
-    // Fix empty strings for required fields
-    if (isRequired && propSchema.type === 'string' && (!value || value === '')) {
-      args[propName] = `test_${propName}`;
-    }
-    
-    // Fix empty arrays when minItems is set or clean up Lorem Ipsum in string arrays
-    if (propSchema.type === 'array' && Array.isArray(value)) {
-      // Clean up Lorem Ipsum text in string arrays
-      if (propSchema.items?.type === 'string') {
-        for (let i = 0; i < value.length; i++) {
-          if (typeof value[i] === 'string') {
-            const looksLikeLoremIpsum = /^[a-z]+( [a-z]+){1,5}$/i.test(value[i].trim());
-            if (looksLikeLoremIpsum || value[i].trim().length < 3) {
-              // Replace with meaningful field names based on context
-              if (nameLower.includes('input')) {
-                value[i] = ['user_query', 'context', 'conversation_history'][i % 3];
-              } else if (nameLower.includes('expected') || nameLower.includes('output')) {
-                value[i] = ['assistant_response', 'completion'][i % 2];
-              } else if (nameLower.includes('metadata')) {
-                value[i] = ['timestamp', 'user_id', 'session_id'][i % 3];
-              } else {
-                value[i] = `field_${i + 1}`;
-              }
-            }
-          }
-        }
-      }
-      
-      if (propSchema.minItems && value.length < propSchema.minItems) {
-        // Generate placeholder items
-        const itemsNeeded = propSchema.minItems - value.length;
-        for (let i = 0; i < itemsNeeded; i++) {
-          if (propSchema.items?.type === 'string') {
-            value.push(`item_${value.length + 1}`);
-          } else if (propSchema.items?.type === 'object') {
-            value.push({});
-          } else {
-            value.push(null);
-          }
-        }
-      }
-    }
-    
-    // Special handling for jsonSchema field (should be a proper JSON Schema, not random properties)
-    if ((nameLower === 'jsonschema' || nameLower === 'json_schema' || nameLower === 'schema') && 
-        propSchema.type === 'object' && propSchema.additionalProperties && 
-        typeof value === 'object' && value !== null) {
-      // Check if it looks like random properties (not a proper JSON Schema)
-      const objValue = value as Record<string, any>;
-      const hasType = 'type' in objValue;
-      const hasProperties = 'properties' in objValue;
-      
-      if (!hasType || !hasProperties) {
-        // Replace with a proper JSON Schema structure
-        args[propName] = {
-          type: "object",
-          properties: {
-            user_query: {
-              type: "string",
-              description: "The user's input query"
-            },
-            context: {
-              type: "string",
-              description: "Additional context for the query"
-            },
-            expected_response: {
-              type: "string",
-              description: "The expected AI response"
-            },
-            timestamp: {
-              type: "string",
-              format: "date-time"
-            }
-          },
-          required: ["user_query", "expected_response"]
-        };
-      }
-    }
-    
-    // Fix empty objects when properties are required
-    if (propSchema.type === 'object' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      if (propSchema.required && propSchema.required.length > 0 && propSchema.properties) {
-        // Ensure required nested properties exist
-        const objValue = value as Record<string, any>;
-        for (const reqProp of propSchema.required) {
-          if (!(reqProp in objValue)) {
-            const nestedPropSchema = propSchema.properties[reqProp as string];
-            objValue[reqProp] = nestedPropSchema?.type === 'string' ? `test_${reqProp}` : null;
-          }
-        }
-      }
-    }
-    
-    // Ensure positive integers for count/limit/page/size fields
-    if (propSchema.type === 'integer' || propSchema.type === 'number') {
-      const isCountField = nameLower.match(/^(limit|page|count|size|offset|max|min|top|take|skip|per_?page|page_?size)$/);
-      
-      if (isCountField && typeof value === 'number') {
-        const absValue = Math.abs(Math.floor(value));
-        
-        if (nameLower.includes('limit') || nameLower.includes('size') || nameLower.includes('per')) {
-          args[propName] = absValue > 0 ? Math.min(absValue, 100) : 10;
-        } else if (nameLower === 'page') {
-          args[propName] = absValue > 0 ? absValue : 1;
-        } else if (nameLower.includes('offset') || nameLower === 'skip') {
-          args[propName] = absValue;
-        } else {
-          args[propName] = absValue > 0 ? absValue : 1;
-        }
-      }
-      
-      // Validate against schema minimum/maximum
-      if (typeof value === 'number') {
-        if (propSchema.minimum !== undefined && value < propSchema.minimum) {
-          args[propName] = propSchema.minimum;
-        }
-        if (propSchema.maximum !== undefined && value > propSchema.maximum) {
-          args[propName] = propSchema.maximum;
-        }
-      }
-    }
-    
-    // ===== Format-specific validation =====
-    
-    // Email format validation
-    if (propSchema.format === 'email' && typeof value === 'string') {
-      if (!value.includes('@') || value.length < 5) {
-        args[propName] = 'user@example.com';
-      }
-    }
-    
-    // URL format validation
-    if ((propSchema.format === 'uri' || propSchema.format === 'url') && typeof value === 'string') {
-      if (!value.startsWith('http://') && !value.startsWith('https://')) {
-        args[propName] = 'https://example.com';
-      }
-    }
-    
-    // UUID format validation
-    if (propSchema.format === 'uuid' && typeof value === 'string') {
-      if (!value.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-        args[propName] = '12345678-1234-1234-1234-123456789abc';
-      }
-    }
-    
-    // ISO Date patterns (always current time for dates)
-    if (propSchema.format === 'date-time' && typeof value === 'string') {
-      if (!value || !value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
-        args[propName] = new Date().toISOString();
-      }
-    }
-    
-    // String pattern validation
-    if (propSchema.pattern && typeof value === 'string') {
-      try {
-        const regex = new RegExp(propSchema.pattern);
-        if (!regex.test(value)) {
-          // Pattern failed, provide a safe default
-          args[propName] = `test_${propName}`;
-        }
-      } catch (e) {
-        // Invalid regex, skip
-      }
-    }
-    
-    // String length validation
-    if (propSchema.type === 'string' && typeof value === 'string') {
-      if (propSchema.minLength && value.length < propSchema.minLength) {
-        args[propName] = value.padEnd(propSchema.minLength, '_');
-      }
-      if (propSchema.maxLength && value.length > propSchema.maxLength) {
-        args[propName] = value.substring(0, propSchema.maxLength);
-      }
-    }
-    
-    // Enum selection (ensure value is in enum)
-    if (propSchema.enum && Array.isArray(propSchema.enum) && propSchema.enum.length > 0) {
-      if (!value || !propSchema.enum.includes(value)) {
-        args[propName] = propSchema.enum[0];
-      }
-    }
-  }
-  
-  // Ensure all required fields exist
-  for (const reqField of required) {
-    if (!(reqField in args) && schema.properties[reqField]) {
-      const fieldSchema = schema.properties[reqField];
-      // Provide a default based on type
-      if (fieldSchema.type === 'string') {
-        args[reqField] = `test_${reqField}`;
-      } else if (fieldSchema.type === 'integer' || fieldSchema.type === 'number') {
-        args[reqField] = fieldSchema.minimum || 1;
-      } else if (fieldSchema.type === 'boolean') {
-        args[reqField] = false;
-      } else if (fieldSchema.type === 'array') {
-        args[reqField] = [];
-      } else if (fieldSchema.type === 'object') {
-        args[reqField] = {};
-      }
-    }
-  }
-  
-  return args;
 }
 
 /**
@@ -495,10 +365,7 @@ async function generateFallbackArguments(schema: any): Promise<any> {
       }
     }
     
-    // Apply smart domain-specific defaults
-    const withSmartDefaults = applySmartDefaults(filtered, modifiedSchema);
-    
-    return withSmartDefaults;
+    return filtered;
   } catch (error) {
     console.error('[generateFallbackArguments] Error generating with json-schema-faker:', error);
     // Very basic fallback if json-schema-faker fails
@@ -662,11 +529,19 @@ async function testMCPServerConnectionAndAuthenticateIfNecessary(
 
     if (toolsListResult.tools && toolsListResult.tools.length > 0) {
       logger.log(
-        `📋 Found ${toolsListResult.tools.length} tools, generating test cases in parallel...`
+        `📋 Found ${toolsListResult.tools.length} tools, generating consistent test dataset...`
       );
 
-      const testCasePromises = toolsListResult.tools.map(async (tool) => {
-        const sampleArgs = await generateSampleArguments(tool, logger, serverUrl);
+      // Generate all arguments in one batch for consistency
+      const batchArgs = await generateBatchSampleArguments(
+        toolsListResult.tools,
+        logger,
+        serverUrl
+      );
+
+      // Create test cases with the batch-generated arguments
+      const toolTestCases = toolsListResult.tools.map((tool) => {
+        const sampleArgs = batchArgs[tool.name] || {};
         logger.log(`📋 Prepared test case for tool '${tool.name}'`);
 
         return {
@@ -684,10 +559,9 @@ async function testMCPServerConnectionAndAuthenticateIfNecessary(
         };
       });
 
-      const toolTestCases = await Promise.all(testCasePromises);
       tests.push(...toolTestCases);
 
-      logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
+      logger.log(`✅ Generated ${toolTestCases.length} consistent test cases`);
     }
 
     return {
@@ -881,10 +755,10 @@ async function testMCPServerWithAuthentication(
       resourceMetadata = await discoverOAuthProtectedResourceMetadata(
         serverUrl
       );
-      logger.log("OAuth protected resource metadata found");
+      logger.log("✅ OAuth protected resource metadata found");
     } catch (metadataError) {
       logger.log(
-        "OAuth protected resource metadata not available, using direct OAuth"
+        "⚠️  OAuth protected resource metadata not available, using direct OAuth"
       );
     }
 
@@ -998,13 +872,20 @@ async function testMCPServerWithAuthentication(
       details: compatibilityAssessment.details,
     });
 
-    // Step 3.1: Generate test cases for each discovered tool (in parallel)
+    // Step 3.1: Generate test cases for discovered tools with consistent dataset
     if (toolsListResult.tools && toolsListResult.tools.length > 0) {
-      logger.log("🧪 Generating test cases for discovered tools in parallel...");
+      logger.log("🧪 Generating consistent test dataset for discovered tools...");
 
-      // Generate all test cases in parallel
-      const testCasePromises = toolsListResult.tools.map(async (tool) => {
-        const sampleArgs = await generateSampleArguments(tool, logger, serverUrl);
+      // Generate all arguments in one batch for consistency
+      const batchArgs = await generateBatchSampleArguments(
+        toolsListResult.tools,
+        logger,
+        serverUrl
+      );
+
+      // Create test cases with the batch-generated arguments
+      const toolTestCases = toolsListResult.tools.map((tool) => {
+        const sampleArgs = batchArgs[tool.name] || {};
         logger.log(`📋 Prepared test case for tool '${tool.name}'`);
 
         return {
@@ -1022,11 +903,9 @@ async function testMCPServerWithAuthentication(
         };
       });
 
-      // Wait for all test cases to be generated
-      const toolTestCases = await Promise.all(testCasePromises);
       tests.push(...toolTestCases);
 
-      logger.log(`✅ Generated ${toolTestCases.length} test cases in parallel`);
+      logger.log(`✅ Generated ${toolTestCases.length} consistent test cases`);
     }
 
     // Step 4: Test resource discovery
