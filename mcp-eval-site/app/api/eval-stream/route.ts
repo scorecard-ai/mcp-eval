@@ -632,6 +632,12 @@ async function testMCPServerConnectionAndAuthenticateIfNecessary(
           response_types: ["code"],
           token_endpoint_auth_method: "none",
           scope: "openid",
+          // Add required fields that Jasper's OAuth server expects as strings
+          logo_uri: `${baseUrl}/favicon.ico`,
+          tos_uri: `${baseUrl}/terms`,
+          policy_uri: `${baseUrl}/privacy`,
+          software_id: "mcp-eval-tool",
+          software_version: "1.0.0",
         };
 
         // Step 4: Register client dynamically
@@ -804,6 +810,12 @@ async function testMCPServerWithAuthentication(
         grant_types: ["authorization_code"],
         response_types: ["code"],
         scope: "openid",
+        // Add required fields that Jasper's OAuth server expects as strings
+        logo_uri: `${baseUrl}/favicon.ico`,
+        tos_uri: `${baseUrl}/terms`,
+        policy_uri: `${baseUrl}/privacy`,
+        software_id: "mcp-eval-tool",
+        software_version: "1.0.0",
       },
       // Return client info as a function as expected by SDK
       clientInformation: () => clientInfo,
