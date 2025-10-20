@@ -384,16 +384,6 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
   const discoveredTools = Array.from(new Set(toolNames)).sort();
   const hasAnyTools = discoveredTools.length > 0;
 
-  // Cursor looks for workspace/file-oriented tools
-  const cursorKeywords = ["file", "workspace", "project", "repo", "read", "write"];
-  const cursorTools = tools
-    .filter((tool) =>
-      cursorKeywords.some((keyword) =>
-        tool.name.toLowerCase().includes(keyword.toLowerCase())
-      )
-    )
-    .map((tool) => tool.name);
-
   const compatibility = [
     {
       client: "OpenAI (App SDK)",
@@ -411,11 +401,10 @@ function evaluateClientCompatibility(tools: MCPTool[] = []) {
     },
     {
       client: "Cursor",
-      compatible: cursorTools.length > 0,
-      reason:
-        cursorTools.length > 0
-          ? `Found workspace-oriented tools (${cursorTools.join(", ")})`
-          : "No workspace or file tools detected; Cursor integrations typically rely on these",
+      compatible: hasAnyTools,
+      reason: hasAnyTools
+        ? "Server exposes tools compatible with Cursor's MCP integration"
+        : "No tools discovered; Cursor needs tools to be exposed",
     },
   ];
 
