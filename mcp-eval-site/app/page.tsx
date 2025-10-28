@@ -33,7 +33,7 @@ export default function Home() {
       <div className="flex flex-col justify-center items-center px-6 py-16">
         <div className="text-center mb-8">
           <h1 className="text-6xl font-normal text-gray-900 mb-8 tracking-tight">
-            MCP Eval
+            MCP Evals
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             Evaluate and test Model Context Protocol (MCP) servers with automated tool execution and validation
