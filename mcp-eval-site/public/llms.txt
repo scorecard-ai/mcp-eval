@@ -1,0 +1,87 @@
+# MCP Evals
+
+> MCP Evals is a comprehensive testing platform for Model Context Protocol (MCP) servers. It provides instant compatibility checks, automated tool testing with intelligent argument generation, and OAuth 2.0 support for authenticated MCP servers.
+
+MCP Evals solves the challenge of testing MCP servers before deployment by automatically discovering tools and resources, generating appropriate test arguments, and validating compatibility with major AI platforms including ChatGPT, Claude, and Cursor.
+
+Key capabilities include OAuth discovery and dynamic client registration, real-time streaming test results, performance metrics tracking, and automated evaluation of tool execution success rates.
+
+## What is MCP (Model Context Protocol)?
+
+Model Context Protocol (MCP) is an open standard that enables AI applications to securely connect to external data sources and tools. MCP servers expose tools and resources that LLMs can invoke during conversations.
+
+## Why Use MCP Evals?
+
+**Before deploying an MCP server, teams need to answer:**
+- Does my MCP server work with ChatGPT, Claude, and Cursor?
+- Are all my tools discoverable and executable?
+- Does OAuth authentication work correctly?
+- What happens when tools are called with real arguments?
+
+MCP Evals provides instant answers by automatically testing your MCP server's complete functionality.
+
+## Getting Started
+
+- [MCP Evals Website](https://mcpevals.ai): Enter any MCP server URL and get instant evaluation results
+- [GitHub Repository](https://github.com/scorecard-ai/mcp-eval): Open-source codebase, self-hosting instructions, and contribution guidelines
+- [README](https://github.com/scorecard-ai/mcp-eval#readme): Comprehensive documentation on features, architecture, and quick start
+
+## Key Features
+
+- [OAuth Support](https://github.com/scorecard-ai/mcp-eval#readme): Full OAuth 2.0 flow with automatic discovery, dynamic client registration, and PKCE
+- [Intelligent Testing](https://github.com/scorecard-ai/mcp-eval#readme): Auto-generates realistic test arguments for tool parameters using AI
+- [Compatibility Checks](https://github.com/scorecard-ai/mcp-eval#readme): Validates MCP server compatibility with ChatGPT, Claude, and Cursor
+- [Real-time Results](https://github.com/scorecard-ai/mcp-eval#readme): Live streaming of test execution with detailed performance metrics
+
+## Use Cases
+
+**For MCP Server Developers**
+- Test your MCP server before publishing
+- Validate OAuth implementation and token exchange
+- Ensure tool schemas are correct and executable
+- Measure response times and performance
+
+**For AI Application Builders**
+- Evaluate third-party MCP servers before integration
+- Compare multiple MCP servers for the same functionality
+- Verify compatibility with your target AI platform (ChatGPT, Claude, Cursor)
+
+**For Enterprise Teams**
+- Validate MCP servers meet security requirements (OAuth, authentication)
+- Test internal MCP servers in staging environments
+- Monitor MCP server health and availability
+
+## Example MCP Servers to Test
+
+- [Scorecard MCP](https://mcp.scorecard.io/mcp): AI evaluation and testing tools
+- [Sentry MCP](https://mcp.sentry.dev/mcp): Error tracking and monitoring
+- [Linear MCP](https://mcp.linear.app/mcp): Project management and issue tracking
+- [Notion MCP](https://mcp.notion.com/mcp): Knowledge base and documentation
+
+## Technical Documentation
+
+- [Architecture Overview](https://github.com/scorecard-ai/mcp-eval/blob/main/CLAUDE.md): Core components, OAuth flow, and MCP SDK integration
+- [Self-Hosting Guide](https://github.com/scorecard-ai/mcp-eval#self-host): Instructions for running MCP Evals locally or on your infrastructure
+- [API Documentation](https://github.com/scorecard-ai/mcp-eval): Evaluation endpoint specifications and response formats
+
+## MCP Evals vs Alternatives
+
+**MCP Evals vs MCP Inspector**: Full OAuth support and intelligent test argument generation vs manual token input and empty arguments
+
+**MCP Evals vs Manual Testing**: Automated testing of all tools simultaneously vs testing one tool at a time
+
+**MCP Evals vs Custom Scripts**: Ready-to-use web interface with compatibility reports vs building your own testing infrastructure
+
+## Common Questions
+
+- "How do I test an MCP server?" - Visit mcpevals.ai and paste your MCP server URL
+- "Does my MCP server work with ChatGPT?" - MCP Evals automatically checks OpenAI compatibility
+- "How do I test OAuth-protected MCP servers?" - MCP Evals handles the complete OAuth flow automatically
+- "What is Model Context Protocol?" - An open standard for connecting AI applications to external tools and data
+
+## Optional
+
+- [Discord Community](https://discord.gg/keUXXXdR): Get help, share MCP servers, and discuss MCP development
+- [Scorecard AI](https://scorecard.ai): The company behind MCP Evals, specializing in AI evaluation and testing
+- [Contributing Guide](https://github.com/scorecard-ai/mcp-eval): How to contribute code, report bugs, or suggest features
+- [License](https://github.com/scorecard-ai/mcp-eval): MIT License - free and open-source
