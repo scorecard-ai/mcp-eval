@@ -27,7 +27,7 @@
     "json-schema-faker": "^0.5.6",
     "lucide-react": "^0.544.0",
     "mcp-remote": "^0.1.29",
-    "next": "^15.5.3",
+    "next": "^15.5.7",
     "postcss": "^8.5.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
